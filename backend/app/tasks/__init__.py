@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import os
+
 from celery import Celery
 
 from app.core.config import settings
 
 celery_app = Celery(
     "land_records",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
+    broker=(
+        os.getenv("CELERY_BROKER_URL")
+        or os.getenv("CELERY_BROKER_URL_OVERRIDE")
+        or settings.CELERY_BROKER_URL
+    ),
+    backend=(
+        os.getenv("CELERY_RESULT_BACKEND")
+        or os.getenv("CELERY_RESULT_BACKEND_OVERRIDE")
+        or settings.CELERY_RESULT_BACKEND
+    ),
 )
 
 celery_app.conf.update(

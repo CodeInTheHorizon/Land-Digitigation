@@ -13,10 +13,10 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db.base import JSONType, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Document(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -44,7 +44,7 @@ class Document(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         String(30), nullable=False, default="uploaded", index=True,
         comment="uploaded | processing | processed | failed | reviewed",
     )
-    processing_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    processing_metadata: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     # -- Owner -----------------------------------------------------------------
     uploaded_by: Mapped[uuid.UUID] = mapped_column(

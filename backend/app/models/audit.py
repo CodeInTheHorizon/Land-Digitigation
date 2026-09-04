@@ -6,10 +6,10 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db.base import JSONType, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class AuditLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -27,7 +27,7 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     resource_type: Mapped[str] = mapped_column(String(50), nullable=False)
     resource_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    old_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    new_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    old_values: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
+    new_values: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

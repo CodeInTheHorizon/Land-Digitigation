@@ -16,10 +16,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db.base import JSONType, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ class LandRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # -- Confidence -----------------------------------------------------------
     overall_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    field_confidences: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    field_confidences: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     # -- Status ---------------------------------------------------------------
     status: Mapped[str] = mapped_column(
@@ -151,7 +151,7 @@ class Landowner(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # De-duplication
     normalized_name: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, index=True)
-    name_variants: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    name_variants: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
 
     ownership_records: Mapped[List["OwnershipRecord"]] = relationship(back_populates="landowner")
 
@@ -177,7 +177,7 @@ class LandParcel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     land_classification: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # GeoJSON or bounding polygon (future)
-    geometry: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    geometry: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     land_records: Mapped[List[LandRecord]] = relationship(back_populates="parcel")
 
@@ -257,7 +257,7 @@ class RegistrationRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     consideration_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     stamp_duty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    parties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    parties: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     land_record: Mapped[LandRecord] = relationship(back_populates="registrations")
@@ -309,31 +309,31 @@ class ExtractionResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Classification
     document_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     classification_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    classification_scores: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    classification_scores: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     # Extraction summary
     entity_count: Mapped[int] = mapped_column(Integer, default=0)
     field_count: Mapped[int] = mapped_column(Integer, default=0)
-    mapped_fields: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    persons: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    mapped_fields: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
+    persons: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
 
     # Confidence
     overall_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    field_confidences: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    field_confidences: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     # Validation
     validation_status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="pending",
         comment="passed | failed | warning | review_required",
     )
-    validation_issues: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    validation_issues: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
     passed_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
     warning_count: Mapped[int] = mapped_column(Integer, default=0)
     review_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Provenance
-    provenance: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    provenance: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
 
     # Processing
     processing_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

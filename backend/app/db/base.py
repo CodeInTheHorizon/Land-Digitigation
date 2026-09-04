@@ -5,9 +5,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON, DateTime, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+# Portable JSON column: native JSONB on PostgreSQL, plain JSON on SQLite.
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 
 class Base(DeclarativeBase):

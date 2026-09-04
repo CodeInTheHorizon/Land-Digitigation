@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ""
+    CELERY_BROKER_URL_OVERRIDE: str = ""
+    CELERY_RESULT_BACKEND_OVERRIDE: str = ""
 
     @property
     def REDIS_URL(self) -> str:
@@ -62,11 +64,15 @@ class Settings(BaseSettings):
 
     @property
     def CELERY_BROKER_URL(self) -> str:
+        if self.CELERY_BROKER_URL_OVERRIDE:
+            return self.CELERY_BROKER_URL_OVERRIDE
         auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/1"
 
     @property
     def CELERY_RESULT_BACKEND(self) -> str:
+        if self.CELERY_RESULT_BACKEND_OVERRIDE:
+            return self.CELERY_RESULT_BACKEND_OVERRIDE
         auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/2"
 

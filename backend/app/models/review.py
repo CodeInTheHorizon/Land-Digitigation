@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db.base import JSONType, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class ValidationResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -36,7 +36,7 @@ class ValidationResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         comment="passed | failed | warning | skipped",
     )
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    details: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
     severity: Mapped[str] = mapped_column(
         String(20), nullable=False, default="medium",
         comment="low | medium | high | critical",
@@ -69,9 +69,9 @@ class ReviewTask(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     # What needs review
-    fields_to_review: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
-    original_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    corrected_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    fields_to_review: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
+    original_values: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
+    corrected_values: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

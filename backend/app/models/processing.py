@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db.base import JSONType, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class ProcessingJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -37,7 +37,7 @@ class ProcessingJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Pipeline stage tracking
     current_stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    stage_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    stage_metadata: Mapped[Optional[dict]] = mapped_column(JSONType, nullable=True)
 
     # Stats
     pages_processed: Mapped[int] = mapped_column(Integer, default=0)
@@ -79,6 +79,6 @@ class OCRResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     bbox_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # -- Extra metadata --------------------------------------------------------
-    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSONType, nullable=True)
 
     page: Mapped["DocumentPage"] = relationship(back_populates="ocr_results")  # type: ignore[name-defined]

@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.models.document import Document, DocumentPage
 from app.models.processing import ProcessingJob
 from app.models.user import User
+from app.models.audit import AuditLog
 from app.schemas.document import (
     DocumentListResponse,
     DocumentPageResponse,
@@ -77,6 +78,7 @@ async def upload_document(
     db.add(doc)
     await db.flush()
     await db.refresh(doc)
+    db.add(AuditLog(user_id=current_user.id, action="document.upload", resource_type="document", resource_id=str(doc.id), description=file.filename))
 
     logger.info("document.uploaded", document_id=str(doc.id), filename=file.filename)
     return doc
@@ -159,6 +161,7 @@ async def process_document(
     from app.tasks.pipeline import process_document_task
     task = process_document_task.delay(str(job.id))
     job.celery_task_id = task.id
+    db.add(AuditLog(user_id=current_user.id, action="document.process", resource_type="document", resource_id=str(doc.id)))
     await db.flush()
 
     logger.info("document.processing_started", document_id=str(doc.id), job_id=str(job.id))
@@ -230,4 +233,5 @@ async def delete_document(
         logger.warning("storage.delete_failed", path=doc.storage_path)
 
     await db.delete(doc)
+    db.add(AuditLog(user_id=current_user.id, action="document.delete", resource_type="document", resource_id=str(document_id)))
     logger.info("document.deleted", document_id=str(doc.id))

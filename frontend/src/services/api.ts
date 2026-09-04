@@ -87,4 +87,6 @@ export const dashboardApi = {
   stats: () => api.get("/dashboard/stats"),
 };
 
+export const exportApi = { download: (format: "csv" | "json" | "xlsx") => api.get(`/exports/land-records/${format}`, { responseType: "blob" }) };
+
 export default api;

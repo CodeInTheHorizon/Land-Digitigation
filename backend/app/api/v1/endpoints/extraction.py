@@ -19,6 +19,7 @@ from app.models.land_record import (
     ReviewLog,
 )
 from app.models.user import User
+from app.models.audit import AuditLog
 from app.schemas.extraction import (
     ClassificationResponse,
     ConfidenceResponse,
@@ -185,6 +186,7 @@ async def submit_review(
 
     # Update record status
     land_record.status = "reviewed"
+    db.add(AuditLog(user_id=current_user.id, action="review.complete", resource_type="land_record", resource_id=str(land_record.id), new_values={"actions": len(review_logs)}))
     await db.flush()
 
     return {

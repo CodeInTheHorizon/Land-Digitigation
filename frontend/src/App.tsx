@@ -5,8 +5,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
-import PlaceholderPage from "@/pages/PlaceholderPage";
-import { UploadPage, DocumentsPage, DocumentDetailPage, LandRecordsPage, LandRecordDetailPage, SearchPage, ReviewPage, ReviewDetailPage } from "@/pages/CorePages";
+import { UploadPage, DocumentsPage, DocumentDetailPage, LandRecordsPage, LandRecordDetailPage, SearchPage, ReviewPage, ReviewDetailPage, ReportsPage, SettingsPage } from "@/pages/CorePages";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,24 +41,8 @@ export default function App() {
         <Route path="review" element={<ReviewPage />} />
         <Route path="review/:id" element={<ReviewDetailPage />} />
         <Route path="search" element={<SearchPage />} />
-        <Route
-          path="reports"
-          element={
-            <PlaceholderPage
-              title="Reports"
-              description="Analytics and reporting coming in Phase 5."
-            />
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <PlaceholderPage
-              title="Settings"
-              description="System configuration coming in Phase 5."
-            />
-          }
-        />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

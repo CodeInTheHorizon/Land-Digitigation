@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { TokenResponse, HealthResponse } from "@/types";
+import type { TokenResponse, HealthResponse, Document, DocumentPage, ExtractionResult, LandRecord, PaginatedResponse } from "@/types";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -61,8 +61,11 @@ export const healthApi = {
 };
 
 export const documentsApi = {
-  list: (params?: Record<string, unknown>) => api.get("/documents", { params }),
-  get: (id: string) => api.get(`/documents/${id}`),
+  list: (params?: Record<string, unknown>) => api.get<PaginatedResponse<Document>>("/documents", { params }),
+  get: (id: string) => api.get<Document>(`/documents/${id}`),
+  pages: (id: string) => api.get<DocumentPage[]>(`/documents/${id}/pages`),
+  extraction: (id: string) => api.get<ExtractionResult>(`/extraction/${id}`),
+  review: (id: string, land_record_id: string, fields: Record<string, string>) => api.post(`/extraction/${id}/review`, { land_record_id, actions: Object.entries(fields).map(([field_name, new_value]) => ({ field_name, action: "edit", new_value })) }),
   upload: (file: File) => {
     const form = new FormData();
     form.append("file", file);
@@ -76,8 +79,8 @@ export const documentsApi = {
 
 export const landRecordsApi = {
   list: (params?: Record<string, unknown>) =>
-    api.get("/land-records", { params }),
-  get: (id: string) => api.get(`/land-records/${id}`),
+    api.get<PaginatedResponse<LandRecord>>("/land-records", { params }),
+  get: (id: string) => api.get<LandRecord>(`/land-records/${id}`),
 };
 
 export const dashboardApi = {

@@ -44,6 +44,7 @@ async def list_land_records(
     survey_number: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = None,
+    document_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -78,6 +79,8 @@ async def list_land_records(
                 LandRecord.khasra_number.ilike(f"%{search}%"),
             )
         )
+    if document_id:
+        query = query.where(LandRecord.document_id == document_id)
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0

@@ -6,6 +6,7 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
 import PlaceholderPage from "@/pages/PlaceholderPage";
+import { UploadPage, DocumentsPage, DocumentDetailPage, LandRecordsPage, LandRecordDetailPage, SearchPage, ReviewPage, ReviewDetailPage } from "@/pages/CorePages";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -33,51 +34,14 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route
-          path="upload"
-          element={
-            <PlaceholderPage
-              title="Upload Documents"
-              description="Drag-and-drop document upload will be implemented in Phase 2."
-            />
-          }
-        />
-        <Route
-          path="documents"
-          element={
-            <PlaceholderPage
-              title="Documents"
-              description="Document listing and management coming in Phase 2."
-            />
-          }
-        />
-        <Route
-          path="land-records"
-          element={
-            <PlaceholderPage
-              title="Land Records"
-              description="Extracted land record browsing coming in Phase 3."
-            />
-          }
-        />
-        <Route
-          path="review"
-          element={
-            <PlaceholderPage
-              title="Review Queue"
-              description="Human review workflow coming in Phase 4."
-            />
-          }
-        />
-        <Route
-          path="search"
-          element={
-            <PlaceholderPage
-              title="Search"
-              description="Full-text and vector search coming in Phase 5."
-            />
-          }
-        />
+        <Route path="upload" element={<UploadPage />} />
+        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="documents/:id" element={<DocumentDetailPage />} />
+        <Route path="land-records" element={<LandRecordsPage />} />
+        <Route path="land-records/:id" element={<LandRecordDetailPage />} />
+        <Route path="review" element={<ReviewPage />} />
+        <Route path="review/:id" element={<ReviewDetailPage />} />
+        <Route path="search" element={<SearchPage />} />
         <Route
           path="reports"
           element={

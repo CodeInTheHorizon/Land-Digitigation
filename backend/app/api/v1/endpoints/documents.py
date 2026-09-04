@@ -141,7 +141,7 @@ async def process_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if doc.status == "processing":
+    if doc.status in ("processing", "uploaded"):
         raise HTTPException(status_code=409, detail="Document is already being processed")
 
     # Create processing job

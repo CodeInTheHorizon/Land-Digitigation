@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.base import Base
 from app.db.session import engine
-from app.models.user import Role, User, UserRole
+from app import models  # noqa: F401
 
 
 @asynccontextmanager
@@ -21,12 +21,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     if settings.DATABASE_URL.startswith("sqlite"):
         async with engine.begin() as connection:
-            await connection.run_sync(
-                lambda sync_connection: Base.metadata.create_all(
-                    sync_connection,
-                    tables=[User.__table__, Role.__table__, UserRole.__table__],
-                )
-            )
+            await connection.run_sync(Base.metadata.create_all)
     yield
 
 

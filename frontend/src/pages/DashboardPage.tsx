@@ -24,10 +24,10 @@ export default function DashboardPage() {
   const cards = [
     { label: "Total Documents", value: stats.total_documents, color: "bg-blue-50 text-blue-700" },
     { label: "Land Records", value: stats.total_land_records, color: "bg-green-50 text-green-700" },
-    { label: "Processing", value: stats.documents_processing, color: "bg-yellow-50 text-yellow-700" },
-    { label: "Completed", value: stats.documents_completed, color: "bg-emerald-50 text-emerald-700" },
+    { label: "Pending", value: stats.documents_pending, color: "bg-yellow-50 text-yellow-700" },
+    { label: "Processed", value: stats.documents_processed, color: "bg-emerald-50 text-emerald-700" },
     { label: "Failed", value: stats.documents_failed, color: "bg-red-50 text-red-700" },
-    { label: "Needs Review", value: stats.documents_review_needed, color: "bg-orange-50 text-orange-700" },
+    { label: "Reviews", value: stats.pending_reviews, color: "bg-orange-50 text-orange-700" },
   ];
 
   return (

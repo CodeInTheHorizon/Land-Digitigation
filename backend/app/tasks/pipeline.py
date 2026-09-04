@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from sqlalchemy import create_engine
@@ -18,6 +18,18 @@ from app.core.logging import get_logger
 from app.tasks import celery_app
 
 logger = get_logger(__name__)
+
+def _as_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
 
 # Module-level engine singleton — avoids creating a new connection pool per task.
 _sync_engine = None
@@ -62,7 +74,8 @@ def process_document_task(self, job_id: str) -> dict:
 
     from app.models.document import Document, DocumentPage
     from app.models.processing import OCRResult, ProcessingJob
-    from app.models.land_record import ExtractionResult as ExtractionResultModel
+    from app.models.land_record import ExtractionResult as ExtractionResultModel, LandRecord, Landowner, OwnershipRecord, MutationRecord, RegistrationRecord
+    from app.models.review import ReviewTask
     from app.services.pipeline import DocumentPipeline
     from app.services.extraction import ExtractionPipeline
     from app.services.storage import get_storage_service
@@ -286,6 +299,44 @@ def process_document_task(self, job_id: str) -> dict:
             )
             db.add(ext_record)
 
+            # Persist the deterministic mapped output as the record consumed by
+            # the records, search, and review screens.
+            mapped = extraction_result.mapped_record
+            if mapped:
+                record_fields = {k: v for k, v in mapped.fields.items() if k in {
+                    "village", "tehsil", "district", "state", "survey_number",
+                    "khasra_number", "khata_number", "plot_number", "area",
+                    "area_unit", "land_classification", "document_type", "document_number",
+                }}
+                record = LandRecord(document_id=doc.id, **record_fields,
+                    overall_confidence=extraction_result.confidence.overall if extraction_result.confidence else None,
+                    field_confidences=extraction_result.confidence.to_dict().get("fields") if extraction_result.confidence else None,
+                    status="validated" if extraction_result.validation and extraction_result.validation.failed_count == 0 else "draft")
+                db.add(record)
+                db.flush()
+                if mapped.persons:
+                    person = mapped.persons[0]
+                    owner = Landowner(name=person["name"], normalized_name=person["name"].casefold())
+                    db.add(owner); db.flush()
+                    db.add(OwnershipRecord(land_record_id=record.id, landowner_id=owner.id,
+                        ownership_type=mapped.fields.get("ownership_type"),
+                        ownership_percentage=None, is_current=True))
+                if mapped.fields.get("mutation_number"):
+                    db.add(MutationRecord(land_record_id=record.id, mutation_number=str(mapped.fields["mutation_number"]),
+                        mutation_date=_as_date(mapped.fields.get("mutation_date"))))
+                if mapped.fields.get("registration_number"):
+                    db.add(RegistrationRecord(land_record_id=record.id, registration_number=str(mapped.fields["registration_number"]),
+                        registration_date=_as_date(mapped.fields.get("registration_date"))))
+                if extraction_result.validation and (extraction_result.validation.review_count or extraction_result.validation.failed_count):
+                    db.add(ReviewTask(
+                        document_id=doc.id, land_record_id=record.id,
+                        task_type="validation_failure" if extraction_result.validation.failed_count else "low_confidence",
+                        priority=1 if extraction_result.validation.failed_count else 2,
+                        status="pending",
+                        fields_to_review=[i.field_name for i in extraction_result.validation.issues if i.field_name],
+                        original_values=record_fields,
+                    ))
+
             # Update document type from classification
             if extraction_result.classification:
                 doc.document_type = extraction_result.classification.category.value
@@ -329,7 +380,7 @@ def process_document_task(self, job_id: str) -> dict:
                 },
             }
 
-            doc.status = "processed"
+            doc.status = "review_needed" if extraction_result.validation and (extraction_result.validation.review_count or extraction_result.validation.failed_count) else "processed"
 
             db.commit()
 

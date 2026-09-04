@@ -1,0 +1,59 @@
+# =============================================================================
+# Backend Dependencies – Phase 1 (Foundation)
+# =============================================================================
+
+# --- Web Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pgvector==0.3.6
+
+# --- Validation & Serialization ---
+pydantic==2.10.3
+pydantic-settings==2.7.0
+email-validator==2.2.0
+
+# --- Authentication ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# --- Task Queue ---
+celery[redis]==5.4.0
+redis==5.2.1
+
+# --- Object Storage ---
+boto3==1.35.86
+minio==7.2.12
+
+# --- Image handling & PDF ---
+Pillow==11.0.0
+pdf2image==1.17.0
+PyMuPDF==1.24.14
+
+# --- Computer Vision (stubs in Phase 1) ---
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+
+# --- NLP / Language detection ---
+langdetect==1.0.9
+
+# --- OCR engines ---
+pytesseract==0.3.13
+easyocr==1.7.2
+
+# --- LLM Clients (interfaces only in Phase 1) ---
+openai==1.58.1
+anthropic==0.40.0
+httpx==0.28.1
+
+# --- Utilities ---
+python-dotenv==1.0.1
+structlog==24.4.0
+tenacity==9.0.0
+aiofiles==24.1.0

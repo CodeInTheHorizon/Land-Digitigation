@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +53,14 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def serialize_roles(cls, value: object) -> list[str]:
+        """Convert the ORM relationship into the public role-name list."""
+        if value is None:
+            return []
+        return [role if isinstance(role, str) else role.name for role in value]  # type: ignore[union-attr]
 
 
 class UserListResponse(BaseModel):

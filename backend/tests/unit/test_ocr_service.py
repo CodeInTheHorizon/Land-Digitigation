@@ -5,6 +5,7 @@ Tests use mock engines to avoid requiring Tesseract / EasyOCR installed.
 
 import numpy as np
 import pytest
+from app.core.config import settings
 
 from app.services.ocr import BoundingBox, OCRBlock, OCREngine, OCRPageResult
 from app.services.ocr.ocr_service import OCRService, _ENGINE_REGISTRY
@@ -158,8 +159,8 @@ class TestOCRService:
     @pytest.fixture(autouse=True)
     def _register_mock_engines(self, monkeypatch):
         """Register mock engines for testing."""
-        monkeypatch.setenv("OCR_PRIMARY_ENGINE", "mock")
-        monkeypatch.setenv("OCR_FALLBACK_ENGINE", "mock_fail")
+        monkeypatch.setattr(settings, "OCR_PRIMARY_ENGINE", "mock")
+        monkeypatch.setattr(settings, "OCR_FALLBACK_ENGINE", "mock_fail")
         _ENGINE_REGISTRY["mock"] = MockOCREngine
         _ENGINE_REGISTRY["mock_fail"] = MockFailEngine
         yield
@@ -179,8 +180,8 @@ class TestOCRService:
     @pytest.mark.asyncio
     async def test_fallback_on_primary_failure(self, monkeypatch):
         """When primary engine fails, the service should try the fallback."""
-        monkeypatch.setenv("OCR_PRIMARY_ENGINE", "mock_fail")
-        monkeypatch.setenv("OCR_FALLBACK_ENGINE", "mock")
+        monkeypatch.setattr(settings, "OCR_PRIMARY_ENGINE", "mock_fail")
+        monkeypatch.setattr(settings, "OCR_FALLBACK_ENGINE", "mock")
 
         service = OCRService()
         service._engines["mock_fail"] = MockFailEngine()
@@ -195,7 +196,7 @@ class TestOCRService:
     @pytest.mark.asyncio
     async def test_low_confidence_filtering(self, monkeypatch):
         """Blocks below OCR_MIN_CONFIDENCE should be filtered."""
-        monkeypatch.setenv("OCR_MIN_CONFIDENCE", "0.90")
+        monkeypatch.setattr(settings, "OCR_MIN_CONFIDENCE", 0.90)
 
         service = OCRService()
         service._engines["mock"] = MockOCREngine()

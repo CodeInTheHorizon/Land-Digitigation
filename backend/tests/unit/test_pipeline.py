@@ -154,7 +154,7 @@ class TestImageExtraction:
     def test_extract_image_page(self):
         pipeline = DocumentPipeline()
         image_bytes = _synthetic_image_bytes()
-        pages = pipeline._extract_pages(image_bytes, "image/jpeg")
+        pages = list(pipeline._extract_pages(image_bytes, "image/jpeg"))
         assert len(pages) == 1
         img, dpi = pages[0]
         assert isinstance(img, np.ndarray)
@@ -169,7 +169,7 @@ class TestImageExtraction:
     def test_invalid_image_raises(self):
         pipeline = DocumentPipeline()
         with pytest.raises(Exception):
-            pipeline._extract_pages(b"not an image", "image/jpeg")
+            list(pipeline._extract_pages(b"not an image", "image/jpeg"))
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +215,8 @@ class TestPipelineEndToEnd:
         )
 
         page = result.pages[0]
-        assert page.image_width == 640
-        assert page.image_height == 480
+        assert page.image_width == page.preprocessing.image.shape[1]
+        assert page.image_height == page.preprocessing.image.shape[0]
 
     @pytest.mark.asyncio
     async def test_pipeline_handles_extraction_failure(self):
@@ -273,8 +273,8 @@ class TestPipelineLanguageDetection:
         assert page.language is not None
 
     @pytest.mark.asyncio
-    async def test_language_override_propagated(self):
-        """When the first page sets a language, subsequent pages should use it."""
+    async def test_each_page_has_language_detection(self):
+        """Each page is independently checked for language."""
         pipeline = DocumentPipeline()
 
         call_count = 0

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -48,6 +49,16 @@ app.add_middleware(
 
 # Mount v1 API
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request, exc):
+    return JSONResponse(status_code=500, content={"detail": "An internal error occurred. Please try again."})
+
+
+@app.get("/health", include_in_schema=False)
+async def liveness():
+    return {"status": "ok"}
 
 
 @app.get("/")

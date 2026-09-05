@@ -39,11 +39,14 @@ def _get_sync_engine():
     """Return a module-level SQLAlchemy sync engine (created once)."""
     global _sync_engine
     if _sync_engine is None:
+        options = {"pool_pre_ping": True}
+        if settings.SYNC_DATABASE_URL.startswith("sqlite"):
+            options["connect_args"] = {"timeout": 30}
+        else:
+            options.update(pool_size=5, max_overflow=10)
         _sync_engine = create_engine(
             settings.SYNC_DATABASE_URL,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            **options,
         )
     return _sync_engine
 
@@ -128,6 +131,13 @@ def process_document_task(self, job_id: str) -> dict:
             # Update document metadata
             doc.page_count = result.page_count
             doc.detected_language = result.primary_language
+            doc.processing_metadata = {
+                "warnings": result.errors,
+                "pages_processed": len(result.pages),
+                "pages_total": result.page_count,
+                "ocr_confidence": result.avg_confidence,
+                "languages": [p.ocr_result.detected_language for p in result.pages],
+            }
 
             # Create DocumentPage + OCRResult records
             pages_processed = 0
@@ -178,17 +188,22 @@ def process_document_task(self, job_id: str) -> dict:
             db.commit()
 
             extraction_pipeline = ExtractionPipeline()
-            page_texts = [
-                p.ocr_result.full_text
-                for p in result.pages
-                if p.ocr_result.full_text
-            ]
+            texts_by_page = {p.page_number: p.ocr_result.full_text for p in result.pages}
+            page_texts = [texts_by_page.get(number, "") for number in range(1, result.page_count + 1)]
             extraction_result = extraction_pipeline.extract(
                 full_text=result.full_text,
                 page_texts=page_texts,
                 page_count=result.page_count,
                 ocr_confidence=result.avg_confidence,
             )
+            extraction_result.structured_data["document_language"] = result.primary_language
+            doc.processing_metadata = {
+                **doc.processing_metadata,
+                "structured_data": extraction_result.structured_data,
+                "warnings": list(dict.fromkeys(result.errors + extraction_result.warnings +
+                    (["Some extraction stages could not complete; review partial results."] if extraction_result.errors else []) +
+                    (["OCR confidence is low; verify all extracted values against the scan."] if result.avg_confidence < 0.5 else []))),
+            }
 
             # Persist extraction result
             ext_record = ExtractionResultModel(
@@ -314,9 +329,11 @@ def process_document_task(self, job_id: str) -> dict:
                     status="validated" if extraction_result.validation and extraction_result.validation.failed_count == 0 else "draft")
                 db.add(record)
                 db.flush()
-                if mapped.persons:
-                    person = mapped.persons[0]
-                    owner = Landowner(name=person["name"], normalized_name=person["name"].casefold())
+                for person in mapped.persons:
+                    if not person.get("name"):
+                        continue
+                    owner = Landowner(name=person["name"], normalized_name=person["name"].casefold(),
+                        father_or_husband_name=person.get("father_or_husband_name"), address=person.get("address"))
                     db.add(owner); db.flush()
                     db.add(OwnershipRecord(land_record_id=record.id, landowner_id=owner.id,
                         ownership_type=mapped.fields.get("ownership_type"),
@@ -381,6 +398,8 @@ def process_document_task(self, job_id: str) -> dict:
             }
 
             doc.status = "review_needed" if extraction_result.validation and (extraction_result.validation.review_count or extraction_result.validation.failed_count) else "processed"
+            if doc.processing_metadata.get("warnings"):
+                doc.status = "review_needed"
 
             db.commit()
 
@@ -406,7 +425,7 @@ def process_document_task(self, job_id: str) -> dict:
         except Exception as exc:
             db.rollback()
             job.status = "failed"
-            job.error_message = str(exc)[:2000]
+            job.error_message = "Document processing failed. Please retry or contact support."
             job.completed_at = datetime.now(timezone.utc)
             doc.status = "failed"
             db.commit()
@@ -414,6 +433,6 @@ def process_document_task(self, job_id: str) -> dict:
             logger.error(
                 "pipeline.failed",
                 job_id=job_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
             raise self.retry(exc=exc, countdown=60)

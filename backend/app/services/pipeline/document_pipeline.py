@@ -25,7 +25,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -124,44 +124,41 @@ class DocumentPipeline:
         try:
             page_iter = self._extract_pages(file_bytes, mime_type)
         except Exception as exc:
-            error_msg = f"Page extraction failed: {exc}"
+            error_msg = "Document pages could not be read. Upload a readable PDF or image."
             logger.error("pipeline.extraction_failed", error=str(exc))
             result.errors.append(error_msg)
             return result
 
         # Step 2: Process each page one at a time to limit memory.
-        # Do a quick language probe on the first page to set the language
-        # for all pages (most land records are single-language).
+        # Probe each page independently; multilingual bundles can switch scripts.
         probe_language: Optional[str] = None
         page_count = 0
 
-        for page_num, (page_img, dpi) in enumerate(page_iter, start=1):
+        iterator = iter(page_iter)
+        while True:
+            try:
+                page_img, dpi = next(iterator)
+            except StopIteration:
+                break
+            except Exception:
+                result.errors.append("Unable to read one or more document pages.")
+                break
             page_count += 1
             try:
-                page_result = await self._process_page(
-                    page_img,
-                    page_number=page_num,
-                    dpi=dpi,
-                    language_override=probe_language,
-                )
-
-                # Use first page's language for subsequent pages
-                if probe_language is None:
-                    probe_language = page_result.language.primary_language
-
+                page_result = await self._process_page(page_img, page_number=page_count, dpi=dpi)
                 result.pages.append(page_result)
-
-            except Exception as exc:
-                error_msg = f"Page {page_num} failed: {exc}"
-                logger.error(
-                    "pipeline.page_failed",
-                    page=page_num,
-                    error=str(exc),
-                )
-                result.errors.append(error_msg)
+                if page_result.language.confidence >= 0.6:
+                    probe_language = probe_language or page_result.language.primary_language
+                else:
+                    result.errors.append(f"Page {page_count}: language could not be confidently identified.")
+                if not page_result.ocr_result.full_text.strip():
+                    result.errors.append(f"Page {page_count}: no readable OCR text found.")
+            except Exception:
+                result.errors.append(f"Page {page_count}: OCR failed; other pages may still be usable.")
 
         result.page_count = page_count
-        result.primary_language = probe_language
+        languages = {p.language.primary_language for p in result.pages if p.language.confidence >= 0.6}
+        result.primary_language = "mixed" if len(languages) > 1 else probe_language
         result.total_processing_time_ms = int(
             (time.monotonic() - pipeline_start) * 1000
         )
@@ -199,7 +196,7 @@ class DocumentPipeline:
         processed_img = preprocess_result.image
 
         # 2. Layout analysis (on original grayscale for better contours)
-        layout_result = self.layout_analyzer.analyze(image)
+        layout_result = self.layout_analyzer.analyze(processed_img)
 
         # 3. Language detection
         # Do a quick OCR pass on a small region to detect language,
@@ -215,14 +212,19 @@ class DocumentPipeline:
             lang_result = await self._detect_language(processed_img)
 
         # 4. Run OCR with detected language
-        languages_str = lang_result.tesseract_langs_string
+        languages = {code.strip() for code in settings.OCR_LANGUAGES.replace(",", "+").split("+") if code.strip()}
+        if lang_result.confidence >= 0.6:
+            languages.update(lang_result.tesseract_langs_string.split("+"))
+        languages_str = "+".join(sorted(languages)) or "eng+hin"
         ocr_result = await self.ocr_service.recognize_page(
             processed_img,
             page_number,
             languages=languages_str,
             language_hint=lang_result.primary_language,
         )
-        ocr_result.detected_language = lang_result.primary_language
+        if ocr_result.full_text.strip():
+            lang_result = self.language_detector.detect_from_image_text(ocr_result.full_text)
+        ocr_result.detected_language = lang_result.primary_language if lang_result.confidence >= 0.6 else None
 
         elapsed_ms = int((time.monotonic() - page_start) * 1000)
 
@@ -242,8 +244,8 @@ class DocumentPipeline:
             preprocessing=preprocess_result,
             layout=layout_result,
             language=lang_result,
-            image_width=w,
-            image_height=h,
+            image_width=processed_img.shape[1],
+            image_height=processed_img.shape[0],
             image_dpi=dpi,
             processing_time_ms=elapsed_ms,
         )
@@ -262,7 +264,7 @@ class DocumentPipeline:
             quick_result = await self.ocr_service.recognize_page(
                 sample,
                 page_number=0,
-                languages="eng+hin",
+                languages=settings.OCR_LANGUAGES.replace(",", "+"),
             )
             if quick_result.full_text.strip():
                 return self.language_detector.detect_from_image_text(
@@ -271,12 +273,12 @@ class DocumentPipeline:
         except Exception as exc:
             logger.debug("pipeline.language_probe_failed", error=str(exc))
 
-        # Fallback: assume English
+        # Unknown language: retain the configured multilingual OCR fallback.
         return LanguageResult(
             primary_language="en",
-            confidence=0.5,
-            script_detected="Latin",
-            all_detected={"en": 1.0},
+            confidence=0.0,
+            script_detected="Unknown",
+            all_detected={},
         )
 
     # ------------------------------------------------------------------
@@ -336,7 +338,7 @@ class DocumentPipeline:
         image_bytes: bytes,
     ) -> List[Tuple[np.ndarray, Optional[int]]]:
         """Load a single image file as one page."""
-        pil_image = Image.open(io.BytesIO(image_bytes))
+        pil_image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
 
         # Try to get DPI from EXIF / image info
         dpi = None

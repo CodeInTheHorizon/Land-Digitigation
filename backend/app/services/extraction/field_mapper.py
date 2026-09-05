@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+import re
 
 from app.services.nlp.entity_extractor import EntitySpan, EntityType, ExtractionResult
 from app.services.extraction.normalizer import FieldNormalizer
@@ -161,8 +162,12 @@ class FieldMapper:
 
         # Map person entities
         for person_ent in person_entities:
+            # Relationship names and sellers are evidence, not automatically owners.
+            if re.match(r"(?:s/o|d/o|w/o|son\s+of|daughter\s+of|wife\s+of|पुत्र|पुत्री|पत्नी|seller|vendor|विक्रेता)", person_ent.raw_text, re.I):
+                record.unmapped_entities.append(person_ent)
+                continue
             name = self.normalizer.normalize_name(person_ent.value)
-            if name:
+            if name and not any(c.isdigit() for c in name):
                 record.persons.append({
                     "name": name,
                     "raw_name": person_ent.value,
@@ -227,6 +232,8 @@ class FieldMapper:
 
             # Determine which date field based on context and document type
             field_name = self._infer_date_field(date_ent, document_type)
+            if not field_name:
+                record.unmapped_entities.append(date_ent)
             if field_name and field_name not in record.fields:
                 record.fields[field_name] = normalized
                 record.provenance.append(FieldProvenance(
@@ -279,21 +286,15 @@ class FieldMapper:
     def _infer_date_field(entity: EntitySpan, document_type: Optional[str]) -> Optional[str]:
         """Infer which date field an entity belongs to from context."""
         context = (entity.context or "").lower()
-
-        if any(kw in context for kw in ["mutation", "नामांतरण", "dakhil", "दाखिल"]):
+        before = context.split(entity.value.lower(), 1)[0].splitlines()
+        nearby = before[-1] if before else ""
+        if re.search(r"birth|inspection|जन्म|निरीक्षण", nearby):
+            return None
+        if re.search(r"(?:mutation|नामांतरण|dakhil|दाखिल).{0,45}(?:dated?|on|दिनांक|तिथि)\s*[:.-]?\s*$", nearby):
             return "mutation_date"
-        if any(kw in context for kw in ["registration", "registered", "पंजीकरण", "रजिस्ट्री"]):
+        if re.search(r"(?:registration|registered|पंजीकरण|रजिस्ट्री).{0,45}(?:dated?|on|दिनांक|तिथि)\s*[:.-]?\s*$", nearby):
             return "registration_date"
-        if any(kw in context for kw in ["sale", "deed", "बैनामा", "विक्रय"]):
-            return "registration_date"
-
-        # Fallback based on document type
-        if document_type in ("mutation", "dakhil_kharij"):
-            return "mutation_date"
-        if document_type in ("registration", "sale_deed"):
-            return "registration_date"
-
-        return "registration_date"  # generic fallback
+        return None
 
     @staticmethod
     def _infer_amount_field(entity: EntitySpan, document_type: Optional[str]) -> Optional[str]:

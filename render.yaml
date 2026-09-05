@@ -1,0 +1,61 @@
+# Preserves SQLite/local uploads. API and worker must share one disk/service.
+services:
+  - type: web
+    name: land-records-api
+    runtime: docker
+    region: singapore
+    plan: 2c-4g
+    numInstances: 1
+    dockerfilePath: ./infrastructure/docker/backend.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m app.deploy
+    healthCheckPath: /health
+    disk:
+      name: land-records-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: DATABASE_URL_OVERRIDE
+        value: sqlite+aiosqlite:////var/data/landrecords.db
+      - key: STORAGE_BACKEND
+        value: local
+      - key: LOCAL_STORAGE_DIR
+        value: /var/data/uploads
+      - key: CORS_ORIGINS
+        sync: false
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: land-records-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: land-records-redis
+          property: connectionString
+      - key: CELERY_CONCURRENCY
+        value: "1"
+      - key: PROCESSING_TIMEOUT_SECONDS
+        value: "300"
+      - key: OCR_PRIMARY_ENGINE
+        value: tesseract
+      - key: OCR_FALLBACK_ENGINE
+        value: easyocr
+      - key: OCR_LANGUAGES
+        value: eng,hin
+  - type: keyvalue
+    name: land-records-redis
+    region: singapore
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

@@ -148,6 +148,13 @@ class ExtractionPipelineResponse(BaseModel):
     validation: ValidationResponse
     processing_time_ms: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    success: bool = True
+    detected_language: Optional[str] = None
+    document_type: Optional[str] = None
+    structured_data: Dict[str, Any] = Field(default_factory=dict)
+    raw_text: str = ""
+    warnings: List[str] = Field(default_factory=list)
+    processing_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

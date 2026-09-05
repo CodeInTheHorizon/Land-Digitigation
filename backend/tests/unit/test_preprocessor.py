@@ -161,7 +161,7 @@ class TestHandwritingPreprocessing:
         img = _make_clean_page()
         result = pp.preprocess_for_handwriting(img)
         assert "clahe_contrast" in result.operations_applied
-        assert "morphological_close" in result.operations_applied
+        assert "morphological_close" not in result.operations_applied
         assert "mild_denoise" in result.operations_applied
 
 

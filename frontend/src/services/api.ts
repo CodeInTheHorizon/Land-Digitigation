@@ -1,8 +1,12 @@
 import axios from "axios";
 import type { TokenResponse, HealthResponse, Document, DocumentPage, ExtractionResult, LandRecord, PaginatedResponse } from "@/types";
 
+const apiBaseURL = `${(import.meta.env.VITE_API_URL || "").replace(/\/+$/, "")}/api/v1`;
+const requestTimeout = 60000;
+
 const api = axios.create({
-  baseURL: "/api/v1",
+  baseURL: apiBaseURL,
+  timeout: requestTimeout,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -20,14 +24,15 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
       const refresh = localStorage.getItem("refresh_token");
       if (refresh) {
         try {
           const { data } = await axios.post<TokenResponse>(
-            "/api/v1/auth/refresh",
+            `${apiBaseURL}/auth/refresh`,
             { refresh_token: refresh },
+            { timeout: requestTimeout },
           );
           localStorage.setItem("access_token", data.access_token);
           localStorage.setItem("refresh_token", data.refresh_token);
@@ -39,6 +44,13 @@ api.interceptors.response.use(
           window.location.href = "/login";
         }
       }
+    }
+    if (!error.response) {
+      error.message = error.code === "ECONNABORTED"
+        ? "The request timed out. Check document status before retrying an upload or processing request."
+        : "Cannot reach the server. Please check your connection and try again.";
+    } else if (error.response.status >= 500) {
+      error.message = "The server is temporarily unavailable. Please try again shortly.";
     }
     return Promise.reject(error);
   },

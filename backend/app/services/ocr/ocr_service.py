@@ -92,6 +92,15 @@ class OCRService:
 
         try:
             result = await engine.recognize(image, languages=languages)
+            if not result.full_text.strip() or result.avg_confidence < settings.OCR_MIN_CONFIDENCE:
+                fallback_name = settings.OCR_FALLBACK_ENGINE if engine.name == settings.OCR_PRIMARY_ENGINE else settings.OCR_PRIMARY_ENGINE
+                if fallback_name != engine.name:
+                    try:
+                        alternative = await self._get_engine(fallback_name).recognize(image, languages=languages)
+                        if alternative.full_text.strip() and (not result.full_text.strip() or alternative.avg_confidence > result.avg_confidence):
+                            result = alternative
+                    except Exception:
+                        pass  # Preserve partial primary text if fallback is unavailable.
             result.page_number = page_number
             result.detected_language = language_hint
             result = self._filter_low_confidence(result)
@@ -155,7 +164,7 @@ class OCRService:
             )
             result.word_count = sum(b.word_count for b in filtered)
         else:
-            result.full_text = ""
+            # Keep original text for review even when no block is reliable.
             result.avg_confidence = 0.0
             result.word_count = 0
 

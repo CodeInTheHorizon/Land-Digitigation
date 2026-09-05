@@ -17,6 +17,18 @@ frontend/.vite/
 # Environment
 .env
 .env.local
+.env.*
+!.env.example
+*.env
+behind.env/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.tsbuildinfo
+.vercel/
 
 # IDE
 .vscode/
@@ -40,3 +52,4 @@ htmlcov/
 # Uploads
 uploads/
 temp/
+.EasyOCR/

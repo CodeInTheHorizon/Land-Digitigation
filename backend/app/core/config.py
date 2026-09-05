@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
+from sqlalchemy.engine import make_url
+from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     # -- App ------------------------------------------------------------------
@@ -32,12 +35,19 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "landrecords"
     POSTGRES_PASSWORD: str = "changeme"
     POSTGRES_DB: str = "landrecords"
-    DATABASE_URL_OVERRIDE: str = ""
+    DATABASE_URL_OVERRIDE: str = Field(
+        default="", validation_alias=AliasChoices("DATABASE_URL_OVERRIDE", "DATABASE_URL")
+    )
 
     @property
     def DATABASE_URL(self) -> str:
         if self.DATABASE_URL_OVERRIDE:
-            return self.DATABASE_URL_OVERRIDE
+            url = make_url(self.DATABASE_URL_OVERRIDE)
+            if url.drivername in ("postgres", "postgresql"):
+                url = url.set(drivername="postgresql+asyncpg")
+            elif url.drivername == "sqlite":
+                url = url.set(drivername="sqlite+aiosqlite")
+            return url.render_as_string(hide_password=False)
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -45,10 +55,9 @@ class Settings(BaseSettings):
 
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        return (
-            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        url = make_url(self.DATABASE_URL)
+        driver = url.drivername.replace("+asyncpg", "").replace("+aiosqlite", "")
+        return url.set(drivername=driver).render_as_string(hide_password=False)
 
     # -- Redis ----------------------------------------------------------------
     REDIS_HOST: str = "localhost"
@@ -136,7 +145,40 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+        return [o.strip().rstrip("/") for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def validate_production(self):
+        if self.APP_ENV != "production":
+            return self
+        for name in ("SECRET_KEY", "JWT_SECRET_KEY"):
+            value = getattr(self, name)
+            if len(value) < 32 or value.startswith("change-me"):
+                raise ValueError(f"Production requires a random {name} of at least 32 characters")
+        if self.DEBUG:
+            raise ValueError("DEBUG must be false in production")
+        if not self.cors_origins_list:
+            raise ValueError("Production requires explicit CORS_ORIGINS")
+        for origin in self.cors_origins_list:
+            parsed = urlsplit(origin)
+            if ("*" in origin or not parsed.hostname or parsed.path or parsed.query
+                    or parsed.fragment or parsed.username or parsed.password
+                    or parsed.scheme not in ("https", "http")
+                    or (parsed.scheme == "http" and parsed.hostname not in ("localhost", "127.0.0.1"))):
+                raise ValueError("CORS_ORIGINS must contain exact HTTPS origins (HTTP localhost allowed)")
+        if not self.DATABASE_URL_OVERRIDE:
+            raise ValueError("Production requires DATABASE_URL or DATABASE_URL_OVERRIDE")
+        url = make_url(self.DATABASE_URL)
+        if url.drivername.startswith("sqlite"):
+            if not url.database or not Path(url.database).is_absolute():
+                raise ValueError("Production SQLite requires an absolute persistent disk path")
+        elif url.host in (None, "localhost", "127.0.0.1"):
+            raise ValueError("Production database must use a deployed database host")
+        if self.STORAGE_BACKEND not in ("local", "minio", "s3"):
+            raise ValueError("Unsupported STORAGE_BACKEND")
+        if self.STORAGE_BACKEND == "local" and not Path(self.LOCAL_STORAGE_DIR).is_absolute():
+            raise ValueError("Production local storage requires an absolute persistent disk path")
+        return self
 
     # -- Logging --------------------------------------------------------------
     LOG_LEVEL: str = "INFO"

@@ -19,6 +19,7 @@ from app.services.confidence import ConfidenceBreakdown, ConfidenceEngine
 from app.services.extraction.field_mapper import FieldMapper, MappedRecord
 from app.services.nlp.entity_extractor import EntityExtractor, ExtractionResult
 from app.services.validation import ValidationEngine, ValidationResult
+from app.services.extraction.structured_record import enrich_record, structured_data
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,8 @@ class ExtractionPipelineResult:
     validation: Optional[ValidationResult] = None
     processing_time_ms: int = 0
     errors: List[str] = field(default_factory=list)
+    structured_data: Dict[str, Any] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
 
 
 class ExtractionPipeline:
@@ -121,6 +124,11 @@ class ExtractionPipeline:
                     result.extraction,
                     document_type=doc_type,
                 )
+                additional, result.warnings = enrich_record(result.mapped_record, full_text)
+                result.structured_data = structured_data(
+                    result.mapped_record.fields, result.mapped_record.persons,
+                    document_type=doc_type, additional=additional, raw_text=full_text,
+                )
                 logger.info(
                     "extraction.fields_mapped",
                     field_count=result.mapped_record.field_count,
@@ -180,6 +188,12 @@ class ExtractionPipeline:
                 result.errors.append(f"Validation failed: {exc}")
 
         result.processing_time_ms = int((time.monotonic() - start) * 1000)
+        if not full_text.strip():
+            result.warnings.append("No readable OCR text was found. Upload a clearer scan or review manually.")
+        elif not result.mapped_record or not any(v is not None for k, v in result.mapped_record.fields.items() if k != "document_type"):
+            result.warnings.append("No reliable land fields were found; the original text is available for review.")
+        if not result.structured_data:
+            result.structured_data = structured_data({}, [], document_type=doc_type, raw_text=full_text)
 
         logger.info(
             "extraction.pipeline_completed",

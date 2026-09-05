@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
-from app.models.document import Document
+from app.models.document import Document, DocumentPage
+from app.services.extraction.structured_record import structured_data
 from app.models.land_record import (
     ExtractionResult,
     LandRecord,
@@ -46,7 +47,7 @@ async def get_extraction_result(
     """Get the extraction pipeline result for a document."""
     # Verify document exists and belongs to user
     result = await db.execute(
-        select(Document).where(Document.id == document_id)
+        select(Document).where(Document.id == document_id, Document.uploaded_by == current_user.id)
     )
     doc = result.scalar_one_or_none()
     if not doc:
@@ -60,7 +61,10 @@ async def get_extraction_result(
     if not ext:
         raise HTTPException(status_code=404, detail="No extraction result found — document may still be processing")
 
-    return _build_pipeline_response(ext)
+    pages = (await db.execute(select(DocumentPage).where(DocumentPage.document_id == document_id)
+                              .order_by(DocumentPage.page_number))).scalars().all()
+    raw_text = "\n\n".join(page.raw_text or "" for page in pages)
+    return _build_pipeline_response(ext, doc=doc, raw_text=raw_text)
 
 
 @router.get("/{document_id}/classification", response_model=ClassificationResponse)
@@ -253,7 +257,7 @@ async def _get_extraction(db: AsyncSession, document_id: uuid.UUID) -> Extractio
     return ext
 
 
-def _build_pipeline_response(ext: ExtractionResult) -> ExtractionPipelineResponse:
+def _build_pipeline_response(ext: ExtractionResult, *, doc=None, raw_text="") -> ExtractionPipelineResponse:
     """Build the full pipeline response from a DB record."""
     # Classification
     classification = ClassificationResponse(
@@ -272,6 +276,7 @@ def _build_pipeline_response(ext: ExtractionResult) -> ExtractionPipelineRespons
     mapped_record = MappedRecordResponse(
         fields=ext.mapped_fields or {},
         persons=ext.persons or [],
+        provenance=ext.provenance or [],
         field_count=ext.field_count,
     )
 
@@ -285,6 +290,7 @@ def _build_pipeline_response(ext: ExtractionResult) -> ExtractionPipelineRespons
         overall=ext.overall_confidence or 0.0,
         field_count=ext.field_count,
         fields=field_confs,
+        low_confidence_fields=[name for name, value in field_confs.items() if value.composite < 0.6],
     )
 
     # Validation
@@ -303,6 +309,18 @@ def _build_pipeline_response(ext: ExtractionResult) -> ExtractionPipelineRespons
         needs_review=ext.review_count > 0,
     )
 
+    metadata = (doc.processing_metadata or {}) if doc else {}
+    language = doc.detected_language if doc else None
+    data = metadata.get("structured_data") or structured_data(
+        ext.mapped_fields or {}, ext.persons or [], language=language,
+        document_type=ext.document_category, raw_text=raw_text,
+    )
+    data = {**data, "document_language": language, "document_type": ext.document_category, "raw_text": raw_text}
+    warnings = list(metadata.get("warnings", []))
+    if not raw_text.strip():
+        warnings.append("No readable OCR text is available.")
+    if not language:
+        warnings.append("Document language could not be confidently identified.")
     return ExtractionPipelineResponse(
         document_id=ext.document_id,
         classification=classification,
@@ -312,4 +330,11 @@ def _build_pipeline_response(ext: ExtractionResult) -> ExtractionPipelineRespons
         validation=validation,
         processing_time_ms=ext.processing_time_ms or 0,
         created_at=ext.created_at,
+        success=bool(raw_text.strip() or any(v is not None for k, v in (ext.mapped_fields or {}).items() if k != "document_type")),
+        detected_language=language,
+        document_type=ext.document_category,
+        structured_data=data,
+        raw_text=raw_text,
+        warnings=list(dict.fromkeys(warnings)),
+        processing_metadata={key: metadata[key] for key in ("pages_processed", "pages_total", "ocr_confidence", "languages") if key in metadata},
     )

@@ -52,14 +52,14 @@ class LocalStorageService(StorageService):
     """Store files on the local filesystem under a configurable base directory."""
 
     def __init__(self, base_dir: str | None = None) -> None:
-        self.base_dir = Path(base_dir or os.getenv("LOCAL_STORAGE_DIR", "uploads"))
+        self.base_dir = Path(base_dir or settings.LOCAL_STORAGE_DIR)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         logger.info("storage.local_init", base_dir=str(self.base_dir))
 
     def _resolve(self, path: str) -> Path:
         """Resolve and validate storage path – guards against traversal."""
         resolved = (self.base_dir / path).resolve()
-        if not str(resolved).startswith(str(self.base_dir.resolve())):
+        if not resolved.is_relative_to(self.base_dir.resolve()):
             raise ValueError(f"Path traversal detected: {path!r}")
         return resolved
 

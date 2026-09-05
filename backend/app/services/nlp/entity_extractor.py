@@ -96,24 +96,24 @@ class ExtractionResult:
 # ---------------------------------------------------------------------------
 
 # Value capture for Indian names: letters + Devanagari + spaces + dots
-_NAME_CHARS = r"[A-Za-z\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\s.\-']"
+_NAME_CHARS = r"[A-Za-z\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F \t.\-']"
 
 _PATTERNS: List[Tuple[str, EntityType, float, str]] = [
     # --- Survey / Khasra / Khata / Plot numbers ---
     (
-        r"(?:survey\s*(?:no|number|#|num)|सर्वे\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
+        r"(?:survey\s*(?:number|num|no|#)|सर्वे\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
         EntityType.SURVEY_NUMBER, 0.85, "regex",
     ),
     (
-        r"(?:khasra\s*(?:no|number|#|num)|खसरा\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-]+(?:\s*[A-Za-zक-ह])?)",
+        r"(?:khasra\s*(?:number|num|no|#)|खसरा\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-]+(?:\s*[A-Za-zक-ह])?)",
         EntityType.KHASRA_NUMBER, 0.85, "regex",
     ),
     (
-        r"(?:khata\s*(?:no|number|#|num)|खाता\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-]+)",
+        r"(?:khata\s*(?:number|num|no|#)|खाता\s*(?:नं|नंबर|क्र))[.\s:\-]*\s*([\d/\-]+)",
         EntityType.KHATA_NUMBER, 0.85, "regex",
     ),
     (
-        r"(?:plot\s*(?:no|number|#)|भूखंड\s*(?:नं|नंबर))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
+        r"(?:plot\s*(?:number|no|#)|भूखंड\s*(?:नं|नंबर))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
         EntityType.PLOT_NUMBER, 0.80, "regex",
     ),
     # --- Area with unit ---
@@ -161,15 +161,15 @@ _PATTERNS: List[Tuple[str, EntityType, float, str]] = [
     ),
     # --- Registration / mutation / document numbers ---
     (
-        r"(?:registration\s*(?:no|number|#)|पंजीकरण\s*(?:नं|संख्या|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
+        r"(?:registration\s*(?:number|no|#)|पंजीकरण\s*(?:नं|संख्या|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
         EntityType.REGISTRATION_NUMBER, 0.80, "regex",
     ),
     (
-        r"(?:mutation\s*(?:no|number|#)|नामांतरण\s*(?:नं|संख्या|क्र)|दाखिल\s*खारिज\s*(?:नं|संख्या))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
+        r"(?:mutation\s*(?:number|no|#)|नामांतरण\s*(?:नं|संख्या|क्र)|दाखिल\s*खारिज\s*(?:नं|संख्या))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
         EntityType.MUTATION_NUMBER, 0.80, "regex",
     ),
     (
-        r"(?:document\s*(?:no|number|#)|दस्तावेज़?\s*(?:नं|संख्या|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
+        r"(?:document\s*(?:number|no|#)|दस्तावेज़?\s*(?:नं|संख्या|क्र))[.\s:\-]*\s*([\d/\-A-Za-z]+)",
         EntityType.DOCUMENT_NUMBER, 0.75, "regex",
     ),
     # --- Person names (contextual) ---
@@ -257,7 +257,7 @@ class EntityExtractor:
                 # Build context window
                 ctx_start = max(0, match.start() - self.CONTEXT_WINDOW)
                 ctx_end = min(len(text), match.end() + self.CONTEXT_WINDOW)
-                context = text[ctx_start:ctx_end].replace("\n", " ").strip()
+                context = text[ctx_start:ctx_end].strip()
 
                 entities.append(EntitySpan(
                     entity_type=entity_type,

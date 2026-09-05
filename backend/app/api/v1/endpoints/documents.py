@@ -53,6 +53,8 @@ async def upload_document(
 
     # Read file content
     content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
     if len(content) > settings.max_upload_bytes:
         raise HTTPException(status_code=413, detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit")
 
@@ -165,7 +167,7 @@ async def process_document(
         task = process_document_task.delay(str(job.id))
     except Exception as exc:
         job.status = "failed"
-        job.error_message = str(exc)[:2000]
+        job.error_message = "Processing service is unavailable. Please try again."
         doc.status = "uploaded"
         await db.commit()
         raise HTTPException(

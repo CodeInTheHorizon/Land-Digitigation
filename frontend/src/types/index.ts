@@ -80,7 +80,7 @@ export interface Ownership { id: string; landowner_id: string; landowner_name?: 
 export interface Mutation { id: string; mutation_number: string | null; mutation_type: string | null; mutation_date: string | null; from_owner: string | null; to_owner: string | null; }
 export interface Registration { id: string; registration_number: string | null; registration_date: string | null; registration_office: string | null; transaction_type: string | null; }
 export interface DocumentPage { id: string; page_number: number; raw_text: string | null; detected_language: string | null; ocr_confidence: number | null; }
-export interface ExtractionResult { document_id: string; classification: { category: string; confidence: number }; mapped_record: { fields: Record<string, unknown>; persons: Array<{name: string; confidence?: number}>; field_count: number }; confidence: { overall: number; fields: Record<string, { composite: number; confidence?: number }> }; validation: { status: string; issues: Array<{message?: string; status?: string; severity?: string; field_name?: string}>; needs_review: boolean }; }
+export interface ExtractionResult { structured_data?: StructuredLandRecord; warnings?: string[]; raw_text?: string; detected_language?: string | null; success?: boolean; document_id: string; classification: { category: string; confidence: number }; mapped_record: { fields: Record<string, unknown>; persons: Array<{name: string; confidence?: number}>; field_count: number }; confidence: { overall: number; fields: Record<string, { composite: number; confidence?: number }> }; validation: { status: string; issues: Array<{message?: string; status?: string; severity?: string; field_name?: string}>; needs_review: boolean }; }
 
 /** Dashboard */
 export interface DashboardStats {
@@ -114,4 +114,25 @@ export interface PaginatedResponse<T> {
 /** Common */
 export interface ErrorResponse {
   detail: string;
+}
+
+export interface StructuredLandRecord {
+  document_language: string | null;
+  document_type: string | null;
+  owner_details: Array<{ name: string | null; father_or_husband_name: string | null; address: string | null }>;
+  survey_number: string | null;
+  khasra_number: string | null;
+  khata_number: string | null;
+  plot_number: string | null;
+  village: string | null;
+  tehsil: string | null;
+  district: string | null;
+  state: string | null;
+  area: { value: number | null; unit: string | null };
+  land_classification: string | null;
+  ownership_type: string | null;
+  mutation_details: Array<Record<string, unknown>>;
+  registration_details: Record<string, unknown>;
+  additional_fields: Record<string, unknown>;
+  raw_text: string;
 }

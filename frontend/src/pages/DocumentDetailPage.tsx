@@ -89,7 +89,18 @@ export default function DocumentDetailPage() {
         {[["Status", label(doc.status)], ["Language", languages[doc.detected_language ?? ""] ?? doc.detected_language ?? "Pending"], ["Detected type", doc.document_type ? label(doc.document_type) : "Pending"], ["Pages", String(doc.page_count ?? pages.length)]].map(([name, value]) => <div key={name} className={`${panel} p-4`}><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{name}</p><p className={`mt-2 text-lg font-semibold capitalize ${name === "Status" && doc.status === "review_needed" ? "text-amber-700" : "text-slate-800"}`}>{value}</p></div>)}
       </section>
       {activeStates.has(doc.status) && <p role="status" className="rounded-xl bg-blue-50 p-4 text-sm text-blue-800">Processing is in progress. Results refresh automatically every 5 seconds.</p>}
-      <section className={panel} aria-labelledby="ocr-heading">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <StructuredResults ext={ext}/>
+        <section className={`${panel} p-5 sm:p-6`}><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold text-slate-900">Validation checks</h2>{ext && <span className={`rounded-full px-3 py-1 text-xs font-medium ${attention.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{attention.length ? `${attention.length} need attention` : label(ext.validation.status)}</span>}</div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">Checks assess extracted data completeness and consistency.</p>
+          <div className="mt-5 space-y-3">{attention.map((issue, index) => <div key={index} className={`rounded-xl border p-4 ${issue.status === "failed" ? "border-red-100 bg-red-50 text-red-800" : "border-amber-100 bg-amber-50 text-amber-900"}`}><p className="text-xs font-semibold uppercase tracking-wide">{label(issue.status ?? "Needs review")}{issue.field_name ? ` · ${label(issue.field_name)}` : ""}</p><p className="mt-2 text-sm leading-relaxed">{issue.message}</p></div>)}</div>
+          {!!passed.length && <details className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4"><summary className="cursor-pointer text-sm font-medium text-emerald-800">{passed.length} checks passed</summary><ul className="mt-3 space-y-2 text-sm text-emerald-800">{passed.map((issue, index) => <li key={index}>{issue.message}</li>)}</ul></details>}
+          {!ext && <p className="py-6 text-sm text-slate-500">Validation results are not available yet.</p>}
+          {(attention.length > 0 || doc.status === "review_needed") && <Link to={`/review/${id}`} className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Review and correct fields</Link>}
+        </section>
+      </div>
+      <details className={panel}>
+        <summary className="cursor-pointer p-5 font-semibold text-slate-900">View raw OCR text</summary>
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
           <div className="flex items-center gap-3"><div className="rounded-xl bg-blue-50 p-3 text-blue-700"><FileText size={22}/></div><div><h2 id="ocr-heading" className="font-semibold text-slate-900">Recognized text</h2><p className="mt-1 text-xs text-slate-500">OCR confidence: {percent(page?.ocr_confidence)} · {rawText.trim() ? rawText.trim().split(/\s+/).length : 0} words on this page</p></div></div>
           <div className="flex flex-wrap gap-2"><button className={button} disabled={!rawText} onClick={() => void copy()}><Copy size={15}/> Copy page</button><button className={button} disabled={!pages.length} onClick={download}><Download size={15}/> Download text</button></div>
@@ -103,21 +114,35 @@ export default function DocumentDetailPage() {
         <div className="max-h-[65vh] min-h-[240px] overflow-auto p-5 sm:p-8" tabIndex={0} aria-label="OCR text content">
           {rawText ? <div lang={page?.detected_language ?? doc.detected_language ?? undefined} className={view === "raw" ? "whitespace-pre font-mono text-slate-700" : "mx-auto max-w-4xl whitespace-pre-wrap break-words font-sans leading-loose text-slate-800"} style={{ fontSize, lineHeight: 1.95 }}>{view === "raw" ? rawText : readableText}</div> : <p className="py-16 text-center text-sm text-slate-500">{activeStates.has(doc.status) ? "Text will appear as processing completes." : "No OCR text is available for this document."}</p>}
         </div>
-      </section>
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <section className={`${panel} p-5 sm:p-6`}><div className="mb-5 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Extracted fields</h2><span className="text-xs text-slate-500">{Object.keys(ext?.mapped_record.fields ?? {}).length} fields</span></div>
-          {ext && <p className="mb-4 text-xs text-slate-500">Overall extraction confidence: {percent(ext.confidence.overall)}</p>}
-          <dl className="grid gap-3 sm:grid-cols-2">{Object.entries(ext?.mapped_record.fields ?? {}).map(([key, value]) => <div key={key} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50 p-4"><dt className="text-xs font-medium capitalize text-slate-500">{label(key)}</dt><dd className="mt-2 break-words text-base font-medium leading-relaxed text-slate-900">{String(value ?? "Not extracted")}</dd><dd className="mt-3 text-xs text-slate-500">Confidence: {percent(ext?.confidence.fields[key]?.composite)}</dd></div>)}</dl>
-          {!Object.keys(ext?.mapped_record.fields ?? {}).length && <p className="py-6 text-sm text-slate-500">No structured fields available yet.</p>}
-        </section>
-        <section className={`${panel} p-5 sm:p-6`}><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold text-slate-900">Validation checks</h2>{ext && <span className={`rounded-full px-3 py-1 text-xs font-medium ${attention.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{attention.length ? `${attention.length} need attention` : label(ext.validation.status)}</span>}</div>
-          <p className="mt-2 text-xs leading-relaxed text-slate-500">Checks assess extracted data completeness and consistency.</p>
-          <div className="mt-5 space-y-3">{attention.map((issue, index) => <div key={index} className={`rounded-xl border p-4 ${issue.status === "failed" ? "border-red-100 bg-red-50 text-red-800" : "border-amber-100 bg-amber-50 text-amber-900"}`}><p className="text-xs font-semibold uppercase tracking-wide">{label(issue.status ?? "Needs review")}{issue.field_name ? ` · ${label(issue.field_name)}` : ""}</p><p className="mt-2 text-sm leading-relaxed">{issue.message}</p></div>)}</div>
-          {!!passed.length && <details className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4"><summary className="cursor-pointer text-sm font-medium text-emerald-800">{passed.length} checks passed</summary><ul className="mt-3 space-y-2 text-sm text-emerald-800">{passed.map((issue, index) => <li key={index}>{issue.message}</li>)}</ul></details>}
-          {!ext && <p className="py-6 text-sm text-slate-500">Validation results are not available yet.</p>}
-          {(attention.length > 0 || doc.status === "review_needed") && <Link to={`/review/${id}`} className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Review and correct fields</Link>}
-        </section>
-      </div>
+      </details>
     </>}
   </div>;
+}
+
+function StructuredResults({ ext }: { ext: ExtractionResult | null }) {
+  const data = ext?.structured_data;
+  const format = (value: unknown): string => {
+    if (value == null || value === "") return "Not extracted";
+    if (Array.isArray(value)) return value.length ? value.map(format).join("; ") : "Not extracted";
+    if (typeof value === "object") return Object.entries(value).map(([key, item]) => `${label(key)}: ${format(item)}`).join(" · ");
+    return String(value);
+  };
+  const fields = (values: Record<string, unknown>) => <dl className="grid gap-3 sm:grid-cols-2">{Object.entries(values).map(([key, value]) => {
+    const score = ext?.confidence.fields[key]?.composite;
+    return <div key={key} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50 p-4"><dt className="text-xs font-medium capitalize text-slate-500">{label(key)}</dt><dd className="mt-2 whitespace-pre-wrap break-words text-base text-slate-900">{format(value)}</dd>{score != null && <dd className={`mt-2 text-xs ${score < 0.6 ? "text-amber-800" : "text-slate-500"}`}>{percent(score)}{score < 0.6 ? " · Verify against scan" : ""}</dd>}</div>;
+  })}</dl>;
+  const group = (title: string, values: Record<string, unknown>) => <section className="space-y-3"><h3 className="font-semibold text-slate-800">{title}</h3>{fields(values)}</section>;
+  return <section className={`${panel} space-y-6 p-5 sm:p-6`} aria-label="Structured land record">
+    <h2 className="font-semibold text-slate-900">Extracted land record</h2>
+    {!!ext?.warnings?.length && <ul role="status" className="space-y-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{ext.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+    {ext && <p className="text-xs text-slate-500">Extraction confidence: {percent(ext.confidence.overall)}. Missing values are shown as Not extracted.</p>}
+    {data ? <>
+      <section className="space-y-3"><h3 className="font-semibold text-slate-800">Owner Details</h3>{data.owner_details.length ? data.owner_details.map((owner, index) => <div key={index}>{fields({ name: owner.name, father_or_husband_name: owner.father_or_husband_name, address: owner.address })}</div>) : <p className="text-sm text-slate-500">Not extracted</p>}</section>
+      {group("Land Identification", { survey_number: data.survey_number, khasra_number: data.khasra_number, khata_number: data.khata_number, plot_number: data.plot_number })}
+      {group("Location", { village: data.village, tehsil: data.tehsil, district: data.district, state: data.state })}
+      {group("Area / Land Details", { area: data.area.value, area_unit: data.area.unit, land_classification: data.land_classification, ownership_type: data.ownership_type })}
+      {group("Mutation / Registration Details", { mutation_details: data.mutation_details, ...data.registration_details })}
+      {group("Additional Extracted Fields", Object.keys(data.additional_fields).length ? data.additional_fields : { additional_fields: null })}
+    </> : ext ? fields(ext.mapped_record.fields) : <p className="text-sm text-slate-500">Structured results will appear when processing completes.</p>}
+  </section>;
 }

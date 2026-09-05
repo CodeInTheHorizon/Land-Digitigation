@@ -93,6 +93,9 @@ class DocumentPreprocessor:
         # Step 1: Grayscale
         gray = self._to_grayscale(image)
         result.operations_applied.append("grayscale")
+        gray, rotation = self._correct_orientation(gray)
+        if rotation:
+            result.operations_applied.append(f"orientation_{rotation}")
         result.image = gray
 
         # Step 2: Quality analysis (decides what else to do)
@@ -102,7 +105,8 @@ class DocumentPreprocessor:
         skew_angle = self._estimate_skew(gray)
         result.skew_angle = skew_angle
 
-        is_clean = noise_level < self.noise_threshold and abs(skew_angle) < 0.5
+        contrast = float(np.percentile(gray, 99) - np.percentile(gray, 1))
+        is_clean = noise_level < self.noise_threshold and abs(skew_angle) < 0.5 and contrast >= 80
         result.is_clean = is_clean
 
         if is_clean and not force:
@@ -113,7 +117,7 @@ class DocumentPreprocessor:
             )
             # Even clean docs get resolution normalisation
             result.image = self._normalise_resolution(gray, dpi)
-            if dpi and dpi < self.target_dpi:
+            if result.image.shape != gray.shape:
                 result.operations_applied.append("resolution_normalisation")
             result.final_size = (result.image.shape[1], result.image.shape[0])
             result.estimated_dpi = dpi or self._guess_dpi(image)
@@ -121,7 +125,7 @@ class DocumentPreprocessor:
 
         # Step 3: Resolution normalisation
         current = self._normalise_resolution(gray, dpi)
-        if dpi and dpi < self.target_dpi:
+        if current.shape != gray.shape:
             result.operations_applied.append("resolution_normalisation")
         result.image = current
 
@@ -143,9 +147,11 @@ class DocumentPreprocessor:
             result.image = current
 
         # Step 7: Adaptive thresholding → binary
-        current = self._threshold(current)
-        result.operations_applied.append("threshold")
-        result.image = current
+        # Preserve faint handwritten strokes; binarization is an opt-in operation.
+        if force:
+            current = self._threshold(current)
+            result.operations_applied.append("threshold")
+            result.image = current
 
         result.final_size = (current.shape[1], current.shape[0])
         result.estimated_dpi = dpi or self._guess_dpi(image)
@@ -166,13 +172,8 @@ class DocumentPreprocessor:
         enhanced = clahe.apply(gray)
         result.operations_applied.append("clahe_contrast")
 
-        # Morphological closing to connect broken pen strokes
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
-        closed = cv2.morphologyEx(enhanced, cv2.MORPH_CLOSE, kernel)
-        result.operations_applied.append("morphological_close")
-
         # Mild denoising (preserve stroke detail)
-        denoised = cv2.fastNlMeansDenoising(closed, h=5)
+        denoised = cv2.fastNlMeansDenoising(enhanced, h=5)
         result.operations_applied.append("mild_denoise")
 
         result.image = denoised
@@ -198,9 +199,11 @@ class DocumentPreprocessor:
         self, image: np.ndarray, dpi: int | None
     ) -> np.ndarray:
         """Upscale if DPI is below target. Never downscale."""
-        if dpi is None or dpi >= self.target_dpi:
+        if dpi is None:
+            dpi = self._guess_dpi(image)
+        if dpi <= 0 or dpi >= self.target_dpi:
             return image
-        scale = self.target_dpi / dpi
+        scale = min(self.target_dpi / dpi, 2.0, (16_000_000 / image.size) ** 0.5)
         if scale <= 1.0:
             return image
         h, w = image.shape[:2]
@@ -209,25 +212,14 @@ class DocumentPreprocessor:
 
     @staticmethod
     def _estimate_noise(gray: np.ndarray) -> float:
-        """Estimate noise level using Laplacian variance (normalised 0–1).
+        """Estimate sparse noise from median-filter residuals (normalised 0–1).
 
         Low value = clean document, high = noisy scan.
         """
-        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-        # Normalise: typical document range 0–5000, cap at 1.0
-        variance = float(laplacian.var())
-        # Invert logic: high variance on a *document* usually means text edges,
-        # not noise.  True noise shows in the *median* absolute deviation of
-        # the high-frequency band.
-        # Use a simpler proxy: percentage of near-median pixels in the
-        # Laplacian that have high magnitude.
-        abs_lap = np.abs(laplacian)
-        median_val = float(np.median(abs_lap))
-        if median_val < 1.0:
-            return 0.0
-        # Fraction of pixels with Laplacian > 2× median (noise-like)
-        high_freq = float(np.mean(abs_lap > 2 * median_val))
-        return round(min(high_freq, 1.0), 4)
+        # Median residual catches sparse scanner speckles even when most of the
+        # page is blank. A Laplacian median of zero used to hide all such noise.
+        residual = cv2.absdiff(gray, cv2.medianBlur(gray, 3))
+        return round(min(float(np.mean(residual > 25)) * 4.0, 1.0), 4)
 
     @staticmethod
     def _estimate_skew(gray: np.ndarray) -> float:
@@ -261,7 +253,20 @@ class DocumentPreprocessor:
     @staticmethod
     def _remove_noise(gray: np.ndarray) -> np.ndarray:
         """Non-local means denoising — good for scanned documents."""
-        return cv2.fastNlMeansDenoising(gray, h=10, templateWindowSize=7, searchWindowSize=21)
+        return cv2.fastNlMeansDenoising(gray, h=5, templateWindowSize=7, searchWindowSize=21)
+
+    @staticmethod
+    def _correct_orientation(gray):
+        """Rotate only on a strong Tesseract OSD signal; missing OSD is harmless."""
+        try:
+            import pytesseract
+            info = pytesseract.image_to_osd(gray, output_type=pytesseract.Output.DICT, timeout=10)
+            rotation = int(info.get("rotate", 0))
+            if float(info.get("orientation_conf", 0)) >= 15 and rotation in (90, 180, 270):
+                return np.rot90(gray, k=-(rotation // 90)).copy(), rotation
+        except Exception:
+            pass
+        return gray, 0
 
     @staticmethod
     def _enhance_contrast(gray: np.ndarray) -> np.ndarray:
@@ -271,12 +276,12 @@ class DocumentPreprocessor:
 
     @staticmethod
     def _deskew(gray: np.ndarray, angle: float) -> np.ndarray:
-        """Rotate image by -angle to correct skew."""
+        """Correct Hough-line slope (image coordinates increase downward)."""
         if abs(angle) < 0.1:
             return gray
         h, w = gray.shape[:2]
         center = (w // 2, h // 2)
-        matrix = cv2.getRotationMatrix2D(center, -angle, 1.0)
+        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
         return cv2.warpAffine(
             gray, matrix, (w, h),
             flags=cv2.INTER_CUBIC,

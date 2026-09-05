@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.core.config import settings
 
 
 class DocumentResponse(BaseModel):
@@ -58,5 +59,12 @@ class ProcessingJobResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
+
+    @field_validator("error_message")
+    @classmethod
+    def safe_error_message(cls, value):
+        if value and settings.APP_ENV == "production":
+            return "Document processing failed. Please retry or contact support."
+        return value
 
     model_config = {"from_attributes": True}

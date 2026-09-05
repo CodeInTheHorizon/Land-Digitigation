@@ -78,10 +78,12 @@ export const documentsApi = {
   pages: (id: string) => api.get<DocumentPage[]>(`/documents/${id}/pages`),
   extraction: (id: string) => api.get<ExtractionResult>(`/extraction/${id}`),
   review: (id: string, land_record_id: string, fields: Record<string, string>) => api.post(`/extraction/${id}/review`, { land_record_id, actions: Object.entries(fields).map(([field_name, new_value]) => ({ field_name, action: "edit", new_value })) }),
-  upload: (file: File) => {
+  upload: (file: File, language?: string) => {
     const form = new FormData();
     form.append("file", file);
-    return api.post("/documents/upload", form, {
+    // Optional hint only; the pipeline detects language automatically when omitted.
+    if (language) form.append("language", language);
+    return api.post<Document>("/documents/upload", form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },

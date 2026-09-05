@@ -26,6 +26,8 @@
 }
 
 body {
+  /* Devanagari faces are included so Hindi land-record values render correctly
+     alongside Latin text without adding a webfont dependency. */
   font-family:
     "Inter",
     system-ui,
@@ -33,7 +35,22 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     Roboto,
+    "Noto Sans Devanagari",
+    "Nirmala UI",
+    "Mangal",
     sans-serif;
   background-color: var(--color-bg);
   color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Long identifiers (khasra, survey and registration numbers) must never force
+   the page to scroll sideways on small screens. */
+html,
+body {
+  overflow-x: hidden;
+}
+
+:where(h1, h2, h3, p, dd, td, li) {
+  overflow-wrap: anywhere;
 }

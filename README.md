@@ -60,6 +60,9 @@ This system leverages **OCR**, **Computer Vision**, **NLP**, and **LLM** technol
 cp .env.example .env
 docker compose up -d
 
+# Initialize/update the PostgreSQL schema
+docker compose run --rm backend alembic upgrade head
+
 # Access
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:8000

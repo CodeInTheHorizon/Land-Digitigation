@@ -55,8 +55,11 @@ services:
       context: .
       dockerfile: infrastructure/docker/backend.Dockerfile
     restart: unless-stopped
+    working_dir: /app
     env_file: .env
     environment:
+      PYTHONPATH: /app
+      DATABASE_URL_OVERRIDE: ""
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       CELERY_BROKER_URL: redis://redis:6379/1
@@ -85,8 +88,11 @@ services:
       context: .
       dockerfile: infrastructure/docker/backend.Dockerfile
     restart: unless-stopped
+    working_dir: /app
     env_file: .env
     environment:
+      PYTHONPATH: /app
+      DATABASE_URL_OVERRIDE: ""
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       CELERY_BROKER_URL: redis://redis:6379/1

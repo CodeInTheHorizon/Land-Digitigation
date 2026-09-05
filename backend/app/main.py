@@ -19,7 +19,10 @@ from app import models  # noqa: F401
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     setup_logging()
-    if settings.DATABASE_URL.startswith("sqlite"):
+    # The repository currently has no Alembic revision files. Initialize the
+    # schema automatically in development so PostgreSQL and SQLite both have
+    # the tables required by authentication and the rest of the API.
+    if settings.APP_ENV == "development" or settings.DATABASE_URL.startswith("sqlite"):
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
     yield

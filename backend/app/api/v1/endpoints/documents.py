@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user
@@ -160,6 +161,35 @@ async def process_document(
     await db.refresh(job)
     # Commit before dispatch so a fast worker can read the job immediately.
     await db.commit()
+
+    if settings.use_sync_processing:
+        # Free-tier / no-broker deployments: run the identical pipeline inline
+        # instead of dispatching to Celery (which would retry Redis until the
+        # HTTP request times out).
+        from app.tasks.pipeline import run_processing_job
+
+        job_id = job.id
+        logger.info("document.processing_inline", document_id=str(document_id), job_id=str(job_id))
+        try:
+            await run_in_threadpool(run_processing_job, str(job_id))
+        except Exception as exc:
+            # run_processing_job already recorded the failure on the job/document.
+            logger.error(
+                "document.inline_processing_failed",
+                document_id=str(document_id),
+                job_id=str(job_id),
+                error_type=type(exc).__name__,
+            )
+
+        # The pipeline used its own sync session; reload the updated rows.
+        db.expire_all()
+        job = await db.get(ProcessingJob, job_id)
+        db.add(AuditLog(user_id=current_user.id, action="document.process", resource_type="document", resource_id=str(document_id)))
+        await db.commit()
+        await db.refresh(job)
+
+        logger.info("document.processing_finished", document_id=str(document_id), job_id=str(job_id), status=job.status)
+        return job
 
     # Dispatch Celery task
     from app.tasks.pipeline import process_document_task

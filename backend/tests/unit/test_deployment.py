@@ -120,3 +120,144 @@ def test_bootstrap_and_restart_preserve_data(tmp_path, monkeypatch):
     with sqlite3.connect(tmp_path / "test.db") as connection:
         assert connection.execute("SELECT value FROM deployment_marker").fetchone() == ("preserved",)
         assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+
+
+# -- Free-tier synchronous processing ----------------------------------------
+
+@pytest.mark.parametrize("mode,env,broker,expect_sync", [
+    ("sync", "production", "", True),
+    ("sync", "development", "redis://localhost:6379/1", True),
+    ("celery", "production", "", False),
+    ("auto", "production", "", True),
+    ("auto", "production", "redis://key-value:6379/1", False),
+    ("auto", "development", "", False),
+])
+def test_processing_mode_resolution(monkeypatch, tmp_path, mode, env, broker, expect_sync):
+    monkeypatch.delenv("CELERY_BROKER_URL", raising=False)
+    monkeypatch.delenv("CELERY_BROKER_URL_OVERRIDE", raising=False)
+    values = dict(PROCESSING_MODE=mode, CELERY_BROKER_URL_OVERRIDE=broker, APP_ENV=env)
+    config = (production_config(tmp_path, **values) if env == "production"
+              else Settings(_env_file=None, **values))
+    assert config.use_sync_processing is expect_sync
+
+
+def test_invalid_processing_mode_rejected():
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, PROCESSING_MODE="queue")
+
+
+def test_sync_deployment_starts_no_celery_worker(monkeypatch):
+    from app import deploy
+    monkeypatch.setattr(deploy, "prepare_storage", lambda: None)
+    monkeypatch.setattr(settings, "PROCESSING_MODE", "sync")
+    started = []
+
+    class DummyProcess:
+        def __init__(self, command):
+            started.append(command)
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(deploy.subprocess, "Popen", DummyProcess)
+    deploy.main()
+    assert len(started) == 1
+    assert "celery" not in " ".join(started[0])
+    assert "uvicorn" in " ".join(started[0])
+
+
+def test_disabled_ocr_fallback_never_loads_easyocr(monkeypatch):
+    from app.services.ocr.ocr_service import OCRService
+    monkeypatch.setattr(settings, "OCR_FALLBACK_ENGINE", "")
+    assert settings.ocr_fallback_engine == ""
+    assert OCRService._fallback_name("tesseract") == ""
+    monkeypatch.setattr(settings, "OCR_FALLBACK_ENGINE", "easyocr")
+    assert OCRService._fallback_name("tesseract") == "easyocr"
+
+
+def test_celery_publish_retries_are_bounded():
+    from app.tasks import celery_app
+    assert celery_app.conf.task_publish_retry_policy["max_retries"] <= 3
+    assert celery_app.conf.broker_transport_options["socket_connect_timeout"] <= 5
+
+
+def test_pipeline_task_delegates_to_shared_runner():
+    from app.tasks import pipeline
+    assert callable(pipeline.run_processing_job)
+    assert pipeline.process_document_task.name == "process_document"
+
+
+@pytest.mark.asyncio
+async def test_sync_mode_runs_pipeline_inline_without_broker(tmp_path, monkeypatch):
+    """The process endpoint completes the job itself and never touches Celery."""
+    import uuid
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.orm import Session as SyncSession
+    from sqlalchemy import create_engine
+
+    from app.main import app
+    from app.db.base import Base
+    from app.db.session import get_db
+    from app.core.dependencies import get_current_user
+    from app.models.document import Document
+    from app.models.processing import ProcessingJob
+    from app.models.user import User
+    from app.tasks import pipeline as pipeline_module
+    from app.api.v1.endpoints import documents as documents_module
+
+    db_path = tmp_path / "sync.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    user = User(id=uuid.uuid4(), email="operator@example.gov", hashed_password="x", full_name="Operator")
+    doc = Document(original_filename="record.pdf", safe_filename="a.pdf", mime_type="application/pdf",
+                   file_size_bytes=10, storage_path="documents/a.pdf", status="uploaded", uploaded_by=user.id)
+    async with factory() as session:
+        session.add_all([user, doc])
+        await session.commit()
+        document_id = doc.id
+
+    async def override_db():
+        async with factory() as session:
+            yield session
+            await session.commit()
+
+    def completed(job_id: str) -> dict:
+        # Stand-in for the real pipeline: writes results the way the worker does.
+        sync_engine = create_engine(f"sqlite:///{db_path}")
+        try:
+            with SyncSession(sync_engine) as db:
+                job = db.get(ProcessingJob, uuid.UUID(job_id))
+                job.status = "completed"
+                db.get(Document, job.document_id).status = "processed"
+                db.commit()
+        finally:
+            sync_engine.dispose()
+        return {"status": "completed"}
+
+    monkeypatch.setattr(pipeline_module, "run_processing_job", completed)
+    monkeypatch.setattr(settings, "PROCESSING_MODE", "sync")
+    monkeypatch.setattr(
+        pipeline_module.process_document_task, "delay",
+        Mock(side_effect=AssertionError("sync mode contacted the Celery broker")),
+    )
+    monkeypatch.setattr(documents_module, "get_storage_service", Mock())
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(f"/api/v1/documents/{document_id}/process")
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+    finally:
+        app.dependency_overrides.clear()
+        await engine.dispose()

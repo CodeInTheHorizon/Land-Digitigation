@@ -3,6 +3,9 @@ import type { TokenResponse, HealthResponse, Document, DocumentPage, ExtractionR
 
 const apiBaseURL = `${(import.meta.env.VITE_API_URL || "").replace(/\/+$/, "")}/api/v1`;
 const requestTimeout = 60000;
+// Processing may run synchronously inside the request when no Celery worker is
+// configured (Render free tier), so it gets the backend's full pipeline budget.
+const processingTimeout = 300000;
 
 const api = axios.create({
   baseURL: apiBaseURL,
@@ -87,7 +90,7 @@ export const documentsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
-  process: (id: string) => api.post(`/documents/${id}/process`),
+  process: (id: string) => api.post(`/documents/${id}/process`, undefined, { timeout: processingTimeout }),
   delete: (id: string) => api.delete(`/documents/${id}`),
 };
 

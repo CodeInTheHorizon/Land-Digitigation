@@ -33,4 +33,18 @@ celery_app.conf.update(
     task_time_limit=settings.PROCESSING_TIMEOUT_SECONDS,
     worker_concurrency=settings.CELERY_CONCURRENCY,
     broker_connection_retry_on_startup=True,
+    # Bound broker connection attempts so an unreachable Redis fails fast
+    # instead of retrying until the HTTP request times out.
+    broker_connection_max_retries=3,
+    broker_transport_options={
+        "socket_connect_timeout": 3,
+        "socket_timeout": 3,
+        "retry_policy": {"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1},
+    },
+    result_backend_transport_options={
+        "socket_connect_timeout": 3,
+        "socket_timeout": 3,
+        "retry_policy": {"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1},
+    },
+    task_publish_retry_policy={"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1},
 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import List
 
@@ -85,6 +86,41 @@ class Settings(BaseSettings):
         auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/2"
 
+    # -- Processing mode ------------------------------------------------------
+    # auto   : Celery when a broker is explicitly configured, otherwise sync
+    #          in production (Render free tier has no Redis).
+    # celery : always dispatch to Celery/Redis.
+    # sync   : always process inside the web request (no Redis contact).
+    PROCESSING_MODE: str = "auto"
+
+    @field_validator("PROCESSING_MODE")
+    @classmethod
+    def _validate_processing_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("auto", "celery", "sync"):
+            raise ValueError("PROCESSING_MODE must be one of: auto, celery, sync")
+        return mode
+
+    @property
+    def celery_broker_configured(self) -> bool:
+        """True only when a broker URL was supplied explicitly (not the localhost default)."""
+        return bool(
+            self.CELERY_BROKER_URL_OVERRIDE
+            or os.getenv("CELERY_BROKER_URL")
+            or os.getenv("CELERY_BROKER_URL_OVERRIDE")
+        )
+
+    @property
+    def use_sync_processing(self) -> bool:
+        """Whether document processing runs inside the web request."""
+        if self.PROCESSING_MODE == "sync":
+            return True
+        if self.PROCESSING_MODE == "celery":
+            return False
+        # auto: keep Celery for development/compose; fall back to sync in
+        # production deployments that have no broker configured.
+        return self.APP_ENV == "production" and not self.celery_broker_configured
+
     # -- Object Storage -------------------------------------------------------
     STORAGE_BACKEND: str = "local"  # local | minio | s3
     LOCAL_STORAGE_DIR: str = "uploads"
@@ -102,7 +138,15 @@ class Settings(BaseSettings):
 
     # -- OCR ------------------------------------------------------------------
     OCR_PRIMARY_ENGINE: str = "tesseract"
+    # Set to "" or "none" to disable the fallback engine entirely — required on
+    # low-memory hosts, where loading EasyOCR/Torch would exhaust the instance.
     OCR_FALLBACK_ENGINE: str = "easyocr"
+
+    @property
+    def ocr_fallback_engine(self) -> str:
+        name = self.OCR_FALLBACK_ENGINE.strip().lower()
+        return "" if name in ("", "none", "disabled") else name
+
     OCR_LANGUAGES: str = "eng,hin"  # Tesseract language packs to load
     OCR_MIN_CONFIDENCE: float = 0.3  # Discard blocks below this confidence
 

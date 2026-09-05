@@ -59,9 +59,11 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-@celery_app.task(bind=True, name="process_document", max_retries=2)
-def process_document_task(self, job_id: str) -> dict:
-    """Full document processing pipeline.
+def run_processing_job(job_id: str) -> dict:
+    """Full document processing pipeline (transport-agnostic).
+
+    Runs identically whether invoked by the Celery worker or synchronously by
+    the API when no Redis broker is available.
 
     Stages:
       1. Fetch document from storage
@@ -435,4 +437,14 @@ def process_document_task(self, job_id: str) -> dict:
                 job_id=job_id,
                 error_type=type(exc).__name__,
             )
-            raise self.retry(exc=exc, countdown=60)
+            raise
+
+
+@celery_app.task(bind=True, name="process_document", max_retries=2)
+def process_document_task(self, job_id: str) -> dict:
+    """Celery entry point — unchanged async behaviour when Redis is configured."""
+    try:
+        return run_processing_job(job_id)
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60)
+

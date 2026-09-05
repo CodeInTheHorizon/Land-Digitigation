@@ -33,29 +33,23 @@ services:
         value: /var/data/uploads
       - key: CORS_ORIGINS
         sync: false
+      # No Redis/Key Value on the free tier: the API runs the pipeline inline.
+      # To restore async processing, provision a Key Value instance, set
+      # PROCESSING_MODE=celery and supply CELERY_BROKER_URL / CELERY_RESULT_BACKEND.
+      - key: PROCESSING_MODE
+        value: sync
       - key: CELERY_BROKER_URL
-        fromService:
-          type: keyvalue
-          name: land-records-redis
-          property: connectionString
+        sync: false
       - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: keyvalue
-          name: land-records-redis
-          property: connectionString
+        sync: false
       - key: CELERY_CONCURRENCY
         value: "1"
       - key: PROCESSING_TIMEOUT_SECONDS
         value: "300"
       - key: OCR_PRIMARY_ENGINE
         value: tesseract
+      # Empty disables the EasyOCR/Torch fallback, which does not fit in free-tier memory.
       - key: OCR_FALLBACK_ENGINE
-        value: easyocr
+        value: ""
       - key: OCR_LANGUAGES
         value: eng,hin
-  - type: keyvalue
-    name: land-records-redis
-    region: singapore
-    plan: 256mb
-    maxmemoryPolicy: noeviction
-    ipAllowList: []

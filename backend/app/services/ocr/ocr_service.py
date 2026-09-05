@@ -50,12 +50,21 @@ class OCRService:
         """Register a new OCR engine at runtime (for plugins / custom engines)."""
         _ENGINE_REGISTRY[name] = cls
 
+    @staticmethod
+    def _fallback_name(current: str) -> str:
+        """Fallback engine for `current`, or "" when no fallback is configured."""
+        fallback = settings.ocr_fallback_engine
+        if not fallback:
+            return ""
+        name = fallback if current == settings.OCR_PRIMARY_ENGINE else settings.OCR_PRIMARY_ENGINE
+        return "" if name == current else name
+
     def _select_engine(self, language: Optional[str]) -> OCREngine:
         """Choose the best engine based on detected language and config."""
         primary = self._get_engine(settings.OCR_PRIMARY_ENGINE)
 
-        if language and not primary.supports_language(language):
-            fallback = self._get_engine(settings.OCR_FALLBACK_ENGINE)
+        if language and not primary.supports_language(language) and settings.ocr_fallback_engine:
+            fallback = self._get_engine(settings.ocr_fallback_engine)
             if fallback.supports_language(language):
                 logger.info(
                     "ocr.engine_fallback",
@@ -93,8 +102,8 @@ class OCRService:
         try:
             result = await engine.recognize(image, languages=languages)
             if not result.full_text.strip() or result.avg_confidence < settings.OCR_MIN_CONFIDENCE:
-                fallback_name = settings.OCR_FALLBACK_ENGINE if engine.name == settings.OCR_PRIMARY_ENGINE else settings.OCR_PRIMARY_ENGINE
-                if fallback_name != engine.name:
+                fallback_name = self._fallback_name(engine.name)
+                if fallback_name:
                     try:
                         alternative = await self._get_engine(fallback_name).recognize(image, languages=languages)
                         if alternative.full_text.strip() and (not result.full_text.strip() or alternative.avg_confidence > result.avg_confidence):
@@ -113,11 +122,10 @@ class OCRService:
             )
 
             # Try fallback engine
-            fallback_name = (
-                settings.OCR_FALLBACK_ENGINE
-                if engine.name == settings.OCR_PRIMARY_ENGINE
-                else settings.OCR_PRIMARY_ENGINE
-            )
+            fallback_name = self._fallback_name(engine.name)
+            if not fallback_name:
+                logger.error("ocr.no_fallback_configured", engine=engine.name)
+                raise RuntimeError(f"OCR failed ({engine.name}): {exc}") from exc
             try:
                 fallback = self._get_engine(fallback_name)
                 result = await fallback.recognize(image, languages=languages)

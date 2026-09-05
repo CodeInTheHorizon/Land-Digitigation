@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { useNavigate } from "react-router-dom";
@@ -71,7 +72,13 @@ export default function UploadPage() {
     try {
       const { data } = await documentsApi.upload(file, language === "auto" ? undefined : language);
       setStage("starting");
-      await documentsApi.process(data.id);
+      try {
+        await documentsApi.process(data.id);
+      } catch (processError) {
+        // The job exists server-side; if only the response was cut short, the
+        // document page reports the real status (including failures) as it polls.
+        if (!axios.isAxiosError(processError) || processError.code !== "ECONNABORTED") throw processError;
+      }
       navigate(`/documents/${data.id}`);
     } catch (caught) {
       setStage("idle");

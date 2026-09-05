@@ -46,12 +46,19 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    commands = [
-        [sys.executable, "-m", "celery", "-A", "app.tasks", "worker",
-         "--loglevel=info", "--concurrency=1", "--prefetch-multiplier=1"],
+    commands = []
+    if not settings.use_sync_processing:
+        # Celery worker only when a Redis broker is configured; in sync mode the
+        # API runs the pipeline itself and no broker is contacted.
+        commands.append(
+            [sys.executable, "-m", "celery", "-A", "app.tasks", "worker",
+             "--loglevel=info", "--concurrency=1", "--prefetch-multiplier=1"]
+        )
+    commands.append(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0",
-         "--port", os.environ.get("PORT", "8000"), "--workers", "1"],
-    ]
+         "--port", os.environ.get("PORT", "8000"), "--workers", "1",
+         "--timeout-keep-alive", "75"]
+    )
     try:
         for command in commands:
             processes.append(subprocess.Popen(command))

@@ -3,12 +3,19 @@
 ## Architecture and limitations
 
 - Vercel serves the existing React 18 / Vite 6 / TypeScript SPA from `frontend`.
-- Render runs the existing FastAPI API and Celery OCR worker in **one Docker web service**. Redis is a separate Render Key Value service.
+- Render runs the existing FastAPI API and Celery OCR worker in **one Docker web service**. Redis is a separate Render Key Value service. Deployments without Redis set `PROCESSING_MODE=sync` and run OCR inside the API process (see "Processing mode" below).
 - The active development environment uses SQLite and local uploads. Production preserves those technologies, with SQLite at `/var/data/landrecords.db` and documents at `/var/data/uploads` on a 10 GB persistent disk.
 - SQLite and uploads must survive deployments. Render's normal filesystem is ephemeral, and disks cannot be shared across services. That is why this configuration keeps API and worker together, with one API process, one OCR worker, and one service instance. Do not create a separate worker using local storage or scale this service horizontally.
 - Disk-backed deployments have downtime. Schedule deployments after OCR finishes. A forced shutdown can interrupt a job; inspect queued/running/failed jobs after a restart. This preparation does not introduce durable job recovery or change OCR task semantics.
 - `app.deploy` creates directories, enables SQLite WAL, creates missing tables, supervises API/worker processes, and exits if either child exits so Render can restart the service. Missing-table initialization is not a migration system: future schema changes need explicit migrations and backups.
 - The existing PostgreSQL and MinIO/S3 adapters remain available. No data is migrated or copied automatically. Moving to independent API/worker services would require shared PostgreSQL and object storage, and a separate migration decision.
+
+## Processing mode (Redis-free deployments)
+
+- `PROCESSING_MODE=sync` makes the API run the identical document pipeline inside the request. No Celery worker is started and Redis is never contacted, so a deployment without a Key Value service no longer retries the broker until the request times out. Multilingual OCR, `structured_data`, `detected_language`, `warnings` and `raw_text` are produced by the same code path as the worker.
+- `PROCESSING_MODE=celery` keeps the existing asynchronous behaviour: `app.deploy` starts the Celery worker and `/documents/{id}/process` dispatches the task.
+- `PROCESSING_MODE=auto` (default) uses Celery unless the deployment is `APP_ENV=production` with no explicit `CELERY_BROKER_URL`/`CELERY_BROKER_URL_OVERRIDE`, in which case it processes synchronously.
+- Synchronous processing occupies the web instance for the duration of OCR. Keep one instance, expect one document at a time, and leave `PROCESSING_TIMEOUT_SECONDS` at `300`. The frontend allows 5 minutes for the processing request and, if the response is cut short, opens the document page, which polls the real job status.
 
 ## Exact Render settings
 
@@ -50,10 +57,11 @@ The Blueprint configures these on the web service:
 | `STORAGE_BACKEND` | `local` |
 | `LOCAL_STORAGE_DIR` | `/var/data/uploads` |
 | `CORS_ORIGINS` | Enter exact Vercel origin, e.g. `https://your-project.vercel.app` |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Blueprint supplies Key Value's internal connection string |
+| `PROCESSING_MODE` | `sync` without Redis (free tier); `celery` or `auto` with a Key Value service |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Leave unset in sync mode; set to Key Value's internal connection string for Celery |
 | `CELERY_CONCURRENCY` | `1` |
 | `PROCESSING_TIMEOUT_SECONDS` | `300` |
-| `OCR_PRIMARY_ENGINE`, `OCR_FALLBACK_ENGINE` | `tesseract`, `easyocr` |
+| `OCR_PRIMARY_ENGINE`, `OCR_FALLBACK_ENGINE` | `tesseract`, empty on free tier (EasyOCR/Torch needs more memory); `easyocr` when memory allows |
 | `OCR_LANGUAGES` | `eng,hin` |
 
 Optional existing settings: `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`, `JWT_REFRESH_TOKEN_EXPIRE_DAYS`, `MAX_UPLOAD_SIZE_MB`, `ALLOWED_EXTENSIONS`, `LOG_LEVEL`, `LOG_FORMAT`. Production rejects default/short signing secrets, debug mode, wildcard origins, and relative SQLite/storage paths.

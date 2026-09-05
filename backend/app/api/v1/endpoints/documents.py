@@ -166,6 +166,7 @@ async def process_document(
     try:
         task = process_document_task.delay(str(job.id))
     except Exception as exc:
+        logger.error("document.dispatch_failed", document_id=str(doc.id), job_id=str(job.id), error=repr(exc))
         job.status = "failed"
         job.error_message = "Processing service is unavailable. Please try again."
         doc.status = "uploaded"

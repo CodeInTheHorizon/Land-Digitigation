@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.logging import setup_logging
+from app.core.logging import get_logger, setup_logging
 from app.db.base import Base
 from app.db.session import engine
 from app import models  # noqa: F401
@@ -51,8 +51,19 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
+logger = get_logger(__name__)
+
+
 @app.exception_handler(Exception)
 async def unexpected_error(request, exc):
+    # Log server-side so Render logs show the cause; the client only sees a
+    # generic message.
+    logger.exception(
+        "request.unhandled_error",
+        path=request.url.path,
+        method=request.method,
+        error=repr(exc),
+    )
     return JSONResponse(status_code=500, content={"detail": "An internal error occurred. Please try again."})
 
 

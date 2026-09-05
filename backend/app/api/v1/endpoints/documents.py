@@ -143,7 +143,7 @@ async def process_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if doc.status in ("processing", "uploaded"):
+    if doc.status == "processing":
         raise HTTPException(status_code=409, detail="Document is already being processed")
 
     # Create processing job
@@ -156,13 +156,27 @@ async def process_document(
     doc.status = "processing"
     await db.flush()
     await db.refresh(job)
+    # Commit before dispatch so a fast worker can read the job immediately.
+    await db.commit()
 
     # Dispatch Celery task
     from app.tasks.pipeline import process_document_task
-    task = process_document_task.delay(str(job.id))
+    try:
+        task = process_document_task.delay(str(job.id))
+    except Exception as exc:
+        job.status = "failed"
+        job.error_message = str(exc)[:2000]
+        doc.status = "uploaded"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Processing service is unavailable. Please try again.",
+        ) from exc
+
     job.celery_task_id = task.id
     db.add(AuditLog(user_id=current_user.id, action="document.process", resource_type="document", resource_id=str(doc.id)))
-    await db.flush()
+    await db.commit()
+    await db.refresh(job)
 
     logger.info("document.processing_started", document_id=str(doc.id), job_id=str(job.id))
     return job

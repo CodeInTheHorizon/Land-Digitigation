@@ -38,6 +38,8 @@ export interface Document {
 }
 
 export type DocumentStatus =
+  | "processing"
+  | "processed"
   | "uploaded"
   | "queued"
   | "preprocessing"
@@ -78,7 +80,7 @@ export interface Ownership { id: string; landowner_id: string; landowner_name?: 
 export interface Mutation { id: string; mutation_number: string | null; mutation_type: string | null; mutation_date: string | null; from_owner: string | null; to_owner: string | null; }
 export interface Registration { id: string; registration_number: string | null; registration_date: string | null; registration_office: string | null; transaction_type: string | null; }
 export interface DocumentPage { id: string; page_number: number; raw_text: string | null; detected_language: string | null; ocr_confidence: number | null; }
-export interface ExtractionResult { document_id: string; classification: { category: string; confidence: number }; mapped_record: { fields: Record<string, unknown>; persons: Array<{name: string; confidence?: number}>; field_count: number }; confidence: { overall: number; fields: Record<string, { confidence: number }> }; validation: { status: string; issues: Array<{message?: string; severity?: string; field_name?: string}>; needs_review: boolean }; }
+export interface ExtractionResult { document_id: string; classification: { category: string; confidence: number }; mapped_record: { fields: Record<string, unknown>; persons: Array<{name: string; confidence?: number}>; field_count: number }; confidence: { overall: number; fields: Record<string, { composite: number; confidence?: number }> }; validation: { status: string; issues: Array<{message?: string; status?: string; severity?: string; field_name?: string}>; needs_review: boolean }; }
 
 /** Dashboard */
 export interface DashboardStats {

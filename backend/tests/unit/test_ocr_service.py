@@ -10,6 +10,22 @@ from app.services.ocr import BoundingBox, OCRBlock, OCREngine, OCRPageResult
 from app.services.ocr.ocr_service import OCRService, _ENGINE_REGISTRY
 
 
+def test_confidence_filter_preserves_page_layout(monkeypatch):
+    from app.services.ocr.ocr_service import settings
+    monkeypatch.setattr(settings, "OCR_MIN_CONFIDENCE", 0.3)
+    text = "जिला: करौली\nतहसील: टोडाभीम\n\nSurvey 123   Area 2.5"
+    result = OCRPageResult(page_number=1, full_text=text, blocks=[
+        OCRBlock(text="जिला:", confidence=0.9, word_count=1),
+        OCRBlock(text="करौली", confidence=0.8, word_count=1),
+        OCRBlock(text="noise", confidence=0.1, word_count=1),
+    ])
+    filtered = OCRService._filter_low_confidence(result)
+    assert filtered.full_text == text
+    assert len(filtered.blocks) == 2
+    assert filtered.word_count == 2
+    assert filtered.avg_confidence == 0.85
+
+
 # ---------------------------------------------------------------------------
 # Mock OCR engine for testing
 # ---------------------------------------------------------------------------

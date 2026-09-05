@@ -20,6 +20,7 @@ celery_app = Celery(
         or os.getenv("CELERY_RESULT_BACKEND_OVERRIDE")
         or settings.CELERY_RESULT_BACKEND
     ),
+    include=["app.tasks.pipeline"],
 )
 
 celery_app.conf.update(
@@ -31,7 +32,5 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=settings.PROCESSING_TIMEOUT_SECONDS,
     worker_concurrency=settings.CELERY_CONCURRENCY,
+    broker_connection_retry_on_startup=True,
 )
-
-# Auto-discover tasks
-celery_app.autodiscover_tasks(["app.tasks"])

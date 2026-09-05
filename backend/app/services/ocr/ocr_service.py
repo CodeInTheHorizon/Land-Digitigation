@@ -146,9 +146,10 @@ class OCRService:
             )
         result.blocks = filtered
 
-        # Recompute aggregates including full_text
+        # Keep the engine's page text: Tesseract blocks are individual words,
+        # so joining them with newlines destroys lines, paragraphs and tables.
+        # Filtering applies to block evidence and confidence statistics only.
         if filtered:
-            result.full_text = "\n".join(b.text for b in filtered)
             result.avg_confidence = round(
                 sum(b.confidence for b in filtered) / len(filtered), 4
             )
